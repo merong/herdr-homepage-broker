@@ -320,3 +320,40 @@ test("E08 changed documents or unavailable plugin still block the two-check pref
     await f.close();
   }
 });
+
+test("E09 status remains readable from committed JSON while agent startup is waiting", async () => {
+  const f = await setup("native");
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const seen = new Promise<void>((r) => (entered = r));
+  const cli = f.h.cli.bind(f.h);
+  f.h.cli = async (args) => {
+    if (args[0] === "agent" && args[1] === "start") {
+      assert.match(args[2], /^[a-z][a-z0-9_-]{0,31}$/);
+      entered();
+      await gate;
+    }
+    return cli(args);
+  };
+  let tick: Promise<void> | undefined;
+  try {
+    assert.equal((await f.send(f.input())).status, 200);
+    await f.b.tick();
+    tick = f.b.serial(() => f.b.tick());
+    await seen;
+    const response = await fetch(f.url + "/api/status", {
+      signal: AbortSignal.timeout(1500),
+    });
+    assert.equal(response.status, 200);
+    const json = await response.json();
+    assert.equal(json.projects[0].status, "starting");
+    assert.equal(json.projects[0].run_id, f.input().run_id);
+    release();
+    await tick;
+  } finally {
+    release();
+    await tick;
+    await f.close();
+  }
+});

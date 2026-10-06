@@ -87,6 +87,7 @@ export class Store {
     projects: {},
     commands: {},
   };
+  published = structuredClone(this.state);
   lockToken = randomUUID();
   locked = false;
   executionLocked = false;
@@ -153,6 +154,7 @@ export class Store {
           ),
         ),
       );
+      this.published = structuredClone(this.state);
     } catch (e: any) {
       if (e.code !== "ENOENT") throw e;
     }
@@ -165,11 +167,9 @@ export class Store {
       );
     next.revision = this.state.revision + 1;
     checkpoint(next);
+    const serialized = JSON.stringify(next, null, 2);
     try {
-      await atomic(
-        path.join(this.dir, "broker-checkpoint.json"),
-        JSON.stringify(next, null, 2),
-      );
+      await atomic(path.join(this.dir, "broker-checkpoint.json"), serialized);
     } catch {
       this.failed = true;
       fail(
@@ -178,6 +178,7 @@ export class Store {
       );
     }
     this.state = next;
+    this.published = JSON.parse(serialized);
     await this.projectAll();
   }
   async projectAll() {

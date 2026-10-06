@@ -1,6 +1,6 @@
 {
   "name": "herdr-homepage-broker",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "Homepage job broker for an isolated Herdr session",

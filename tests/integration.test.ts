@@ -600,3 +600,24 @@ test("MCP missing tool never becomes a usable generation connection", async () =
     mcp.close();
   }
 });
+
+test("Herdr stderr keeps definitive validation errors and startup uncertainty distinct", async () => {
+  const f = await fixture();
+  try {
+    const bin = path.join(f.root, "refusing-herdr");
+    f.config.herdrBin = bin;
+    for (const code of ["invalid_agent_name", "agent_not_ready"]) {
+      await fs.writeFile(
+        bin,
+        `#!${process.execPath}\nconsole.error(JSON.stringify({error:{code:${JSON.stringify(code)},message:"fixture refusal"}}));process.exit(1);\n`,
+        { mode: 0o700 },
+      );
+      await assert.rejects(
+        () => new Herdr(f.config).cli(["agent", "start"]),
+        (e: any) => e.code === code,
+      );
+    }
+  } finally {
+    await fs.rm(f.root, { recursive: true, force: true });
+  }
+});

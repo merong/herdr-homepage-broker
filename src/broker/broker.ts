@@ -12,6 +12,7 @@ import {
 import {
   Command,
   Config,
+  Checkpoint,
   Project,
   Run,
   Operation,
@@ -32,7 +33,7 @@ import {
   authenticate,
   validateReplacement,
 } from "../domain/engine.js";
-import { Herdr, Lines, Observer } from "../herdr/transport.js";
+import { Herdr, HerdrRejected, Lines, Observer } from "../herdr/transport.js";
 import { rolePrompt, claudeArgs, assignment } from "../agents/prompts.js";
 import { Mcp, field } from "../media/mcp.js";
 import {
@@ -116,7 +117,14 @@ export class Broker {
             client.destroy();
             return;
           }
-          void this.serial(() => this.handle(command(v))).then(
+          const input = command(v);
+          const response =
+            input.type === "status"
+              ? Promise.resolve(
+                  this.status(input.project_id, this.store.published),
+                )
+              : this.serial(() => this.handle(input));
+          void response.then(
             (result) => client.end(JSON.stringify({ ok: true, result }) + "\n"),
             (e) =>
               client.end(
@@ -150,7 +158,8 @@ export class Broker {
       await fs.chmod(socket, 0o600);
       if (this.config.web?.enabled) {
         this.dashboard = new Dashboard(
-          () => this.serial(async () => structuredClone(this.status())),
+          async () =>
+            structuredClone(this.status(undefined, this.store.published)),
           this.config,
         );
         try {
@@ -424,15 +433,15 @@ export class Broker {
       ).length,
     });
   }
-  status(project?: string) {
+  status(project?: string, state: Checkpoint = this.store.state) {
     const ps = project
-      ? [this.store.state.projects[project]].filter(Boolean)
-      : Object.values(this.store.state.projects);
+      ? [state.projects[project]].filter(Boolean)
+      : Object.values(state.projects);
     if (project && !ps.length) fail("unknown_project", "Project not found");
     return {
       schema_version: 1,
       session: "homepage",
-      revision: this.store.state.revision,
+      revision: state.revision,
       projection_pending: this.store.pending,
       runtime_error: this.runtimeError,
       storage_fault: this.store.failed,
@@ -492,11 +501,11 @@ export class Broker {
       await this.save(p);
       return result;
     } catch (e: any) {
-      op.status = "unknown";
+      op.status = e instanceof HerdrRejected ? "settled" : "unknown";
       op.error = e.code ?? "dispatch_unknown";
       if (!terminal.has(r.status)) r.status = "paused";
       r.resume_required = true;
-      r.reason = "operation_unknown";
+      r.reason = e instanceof HerdrRejected ? e.code : "operation_unknown";
       await this.save(p);
       throw e;
     }
@@ -544,6 +553,14 @@ export class Broker {
           observed_at: now(),
           interactive_ready: live.interactive_ready ?? false,
         };
+        if (!a.herdr.started && live.agent_status === "unknown") {
+          try {
+            if (await this.herdr.shellReady(a.herdr.pane_id))
+              a.runtime.status = "idle";
+          } catch {
+            /* Keep unknown until the foreground process is verified. */
+          }
+        }
         changed = true;
         if (
           live.agent_status === "blocked" &&
@@ -635,12 +652,14 @@ export class Broker {
     for (const a of r.agents) {
       if (a.herdr.started) continue;
       const prompt = await rolePrompt(this.config, p, r, a);
+      const name = `hp-${hash(a.agent_id).slice(0, 12)}-${a.role}`;
       await this.operation(
         p,
         r,
         "agent.start",
         {
           agent_id: a.agent_id,
+          herdr_name: name,
           pane_id: a.herdr.pane_id,
           model: a.model,
           effort: a.effort,
@@ -649,7 +668,7 @@ export class Broker {
           this.herdr.cli([
             "agent",
             "start",
-            a.agent_id,
+            name,
             "--kind",
             "claude",
             "--pane",
@@ -944,7 +963,9 @@ export class Broker {
         .sort((a, b) => a.r.queue_seq - b.r.queue_seq)) {
         if (slots >= 2) break;
         r.slot = true;
-        r.status = r.herdr.workspace_id ? "running" : "starting";
+        r.status = r.agents.every((a) => a.herdr.started)
+          ? "running"
+          : "starting";
         slots++;
         await this.save(p);
       }

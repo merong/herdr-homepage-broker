@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { Config, Fault, fail } from "../contracts/types.js";
 const exec = promisify(execFile);
+export class HerdrRejected extends Fault {}
 export class Lines {
   private decoder = new StringDecoder("utf8");
   private buffer = "";
@@ -112,6 +113,16 @@ export class Herdr {
       return data.result ?? data;
     } catch (e: any) {
       if (e instanceof Fault) throw e;
+      try {
+        const error = JSON.parse(e.stderr || e.stdout).error;
+        if (error?.code && error?.message) {
+          if (error.code === "invalid_agent_name")
+            throw new HerdrRejected(error.code, error.message);
+          throw new Fault(error.code, error.message);
+        }
+      } catch (parsed) {
+        if (parsed instanceof Fault) throw parsed;
+      }
       throw new Fault(
         "dispatch_unknown",
         "Herdr CLI did not return a confirmed result",
@@ -126,6 +137,16 @@ export class Herdr {
     if (r.type !== "session_snapshot" || !Array.isArray(r.snapshot?.panes))
       fail("invalid_response", "Invalid Herdr snapshot");
     return r.snapshot;
+  }
+  async shellReady(pane: string) {
+    const r = await this.api("pane.process_info", { pane_id: pane });
+    const p = r.process_info;
+    return (
+      !!p?.shell_pid &&
+      p.foreground_process_group_id === p.shell_pid &&
+      p.foreground_processes?.length === 1 &&
+      p.foreground_processes[0].pid === p.shell_pid
+    );
   }
   async doctor() {
     const p = await this.api("ping");
