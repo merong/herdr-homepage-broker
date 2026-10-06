@@ -1,0 +1,17 @@
+{
+  "session": "homepage",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "allowExecution": false,
+  "skills": ["/absolute/path/to/approved-homepage-higgsfield/SKILL.md"],
+  "mcp": {
+    "command": "/absolute/path/to/higgsfield-mcp-executable",
+    "args": [],
+    "generateTool": "REPLACE_WITH_EXPOSED_TOOL_NAME",
+    "statusTool": "REPLACE_WITH_EXPOSED_STATUS_TOOL_NAME",
+    "jobIdPath": "REPLACE_WITH_JOB_ID_FIELD",
+    "statusPath": "REPLACE_WITH_STATUS_FIELD",
+    "assetPath": "REPLACE_WITH_ASSET_FIELD",
+    "statusArgument": "REPLACE_WITH_JOB_ID_ARGUMENT"
+  }
+}

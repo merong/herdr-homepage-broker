@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent read projection",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "revision",
+    "project_id",
+    "run_id",
+    "agents"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "role",
+          "model",
+          "effort",
+          "herdr",
+          "runtime",
+          "status",
+          "waiting_reason"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "pm",
+              "developer",
+              "designer"
+            ]
+          },
+          "model": {
+            "const": "claude-opus-5-5"
+          },
+          "effort": {
+            "const": "high"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "working",
+              "waiting",
+              "stopped",
+              "failed"
+            ]
+          },
+          "token": false
+        }
+      }
+    }
+  }
+}

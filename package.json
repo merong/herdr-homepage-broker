@@ -1,0 +1,38 @@
+{
+  "name": "herdr-homepage-broker",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Homepage job broker for an isolated Herdr session",
+  "bin": {
+    "herdr-webjobs": "dist/src/cli.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/export-schemas.mjs && node scripts/copy-web.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "test:unit": "npm run build && node --test dist/tests/domain.test.js",
+    "test:integration": "npm run build && node --test dist/tests/integration.test.js",
+    "start": "node dist/src/cli.js broker start",
+    "doctor": "node dist/src/cli.js doctor",
+    "test:herdr": "npm run build && node dist/tests/herdr-live.js",
+    "test:plugin": "npm run build && node dist/tests/plugin-live.js",
+    "test:web": "npm run build && node --test dist/tests/web.test.js",
+    "format:check": "prettier --check \"src/**/*.ts\" \"src/web/public/*\" \"tests/**/*.ts\" \"scripts/*.mjs\""
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "prettier": "3.6.2",
+    "typescript": "5.8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/merong/herdr-homepage-broker.git"
+  }
+}

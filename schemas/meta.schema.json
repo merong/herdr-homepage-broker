@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project read projection",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "revision",
+    "project_id",
+    "run_id",
+    "status",
+    "input_required",
+    "input_requests",
+    "artifacts",
+    "herdr",
+    "resume_required"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "queued",
+        "starting",
+        "running",
+        "waiting_input",
+        "retrying",
+        "paused",
+        "cancelling",
+        "review_pending",
+        "failed",
+        "cancelled",
+        "superseded"
+      ]
+    },
+    "input_required": {
+      "type": "boolean"
+    },
+    "input_requests": {
+      "type": "array"
+    },
+    "herdr": {
+      "type": "object",
+      "required": [
+        "session_name",
+        "socket_path",
+        "workspace_id"
+      ],
+      "properties": {
+        "session_name": {
+          "const": "homepage"
+        },
+        "socket_path": {
+          "type": "string"
+        },
+        "workspace_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object"
+    },
+    "resume_required": {
+      "type": "boolean"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.runtime/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.codex/
+.agents/
+*.pem
+/docs/*
+!/docs/installation.md
+!/docs/usage.md

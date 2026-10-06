@@ -1,0 +1,49 @@
+id = "herdr-homepage-broker"
+name = "Homepage broker"
+version = "0.2.0"
+min_herdr_version = "0.8.0"
+platforms = ["macos"]
+
+[[build]]
+command = ["npm", "ci", "--ignore-scripts"]
+platforms = ["macos"]
+
+[[build]]
+command = ["npm", "run", "build"]
+platforms = ["macos"]
+
+[[panes]]
+id = "board"
+title = "Homepage jobs"
+placement = "split"
+command = ["node", "dist/src/cli.js", "board"]
+
+[[actions]]
+id = "start"
+title = "Start homepage broker"
+command = ["node", "dist/src/cli.js", "plugin", "start"]
+
+[[actions]]
+id = "open-board"
+title = "Open homepage jobs"
+command = ["node", "dist/src/cli.js", "plugin", "board"]
+
+[[actions]]
+id = "status"
+title = "Homepage broker status"
+command = ["node", "dist/src/cli.js", "plugin", "status"]
+
+[[actions]]
+id = "open-web"
+title = "Open homepage web UI"
+command = ["node", "dist/src/cli.js", "plugin", "web"]
+
+[[actions]]
+id = "web-status"
+title = "Homepage web UI status"
+command = ["node", "dist/src/cli.js", "plugin", "web-status"]
+
+[[actions]]
+id = "stop"
+title = "Stop homepage broker (idle only)"
+command = ["node", "dist/src/cli.js", "plugin", "stop"]

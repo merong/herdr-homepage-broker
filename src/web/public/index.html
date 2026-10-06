@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Homepage · 제작 현황</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+    <script src="/actions.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#content">본문으로 이동</a>
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Homepage 제작 현황"
+        ><span class="brand-icon">h.</span
+        ><span>homepage<span class="brand-sub">HERDR BROKER</span></span></a
+      >
+      <div class="sidebar-label">WORKSPACE</div>
+      <div class="nav-active">
+        <span>◫</span> 제작 현황 <span class="nav-count" id="nav-count">—</span>
+      </div>
+      <div class="session-box">
+        <span class="sidebar-label">실행 세션</span
+        ><strong><i class="dot"></i> homepage</strong>
+        <p>프로젝트별 작업공간<br />PM · 개발자 · 디자이너</p>
+      </div>
+      <div class="sidebar-bottom">
+        <span class="read-only">homepage 전용</span>
+        <p>제작 요청은 CLI로 전달하고<br />JSON으로 상태를 확인합니다.</p>
+      </div>
+    </aside>
+    <div class="shell">
+      <header class="topbar">
+        <span
+          >워크스페이스 <span class="slash">/</span>
+          <strong>제작 현황</strong></span
+        >
+        <div class="connection">
+          <button id="help-open" class="button small">도움말</button>
+          <span id="connection" role="status">연결 중</span
+          ><button id="refresh" class="button small">새로고침 ↻</button>
+        </div>
+      </header>
+      <main id="content">
+        <div class="toolbar">
+          <button id="checks-open" class="button">상태 체크</button
+          ><button id="request-open" class="button primary" disabled>
+            + 제작 요청
+          </button>
+        </div>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">HOMEPAGE OPERATIONS</p>
+            <h1>홈페이지 제작 현황<span class="accent">.</span></h1>
+            <p class="subtitle">
+              요청부터 검토 대기까지, 프로젝트의 흐름을 확인하세요.
+            </p>
+          </div>
+          <div class="sync">
+            <span id="updated">첫 상태를 기다리고 있습니다</span
+            ><small>2초마다 자동 갱신 · 모델 호출 없음</small>
+          </div>
+        </div>
+        <div id="notice" class="notice" role="status" hidden></div>
+        <div id="error" class="notice error" role="alert" hidden></div>
+        <section class="metrics" aria-label="프로젝트 요약">
+          <div class="metric">
+            <span>실행 슬롯</span
+            ><strong><b id="slots">—</b><small> / 2</small></strong
+            ><em>동시 제작 프로젝트</em>
+          </div>
+          <div class="metric">
+            <span>큐 대기</span><strong id="queued">—</strong
+            ><em>실행을 기다리는 요청</em>
+          </div>
+          <div class="metric">
+            <span><i class="dot amber"></i> 입력 필요</span
+            ><strong id="waiting">—</strong><em>사용자 확인이 필요합니다</em>
+          </div>
+          <div class="metric">
+            <span><i class="dot green"></i> 검토 대기</span
+            ><strong id="review">—</strong><em>미리보기와 결과 확인</em>
+          </div>
+        </section>
+        <section class="workbench" aria-label="프로젝트 탐색">
+          <div class="projects">
+            <div class="panel-heading">
+              <h2>프로젝트 <span id="total">0</span></h2>
+              <span class="mono">QUEUE</span>
+            </div>
+            <label class="search"
+              ><span>⌕</span
+              ><input
+                id="search"
+                type="search"
+                placeholder="프로젝트 검색"
+                aria-label="프로젝트 검색"
+            /></label>
+            <div class="filters" role="group" aria-label="상태 필터">
+              <button data-filter="all" aria-pressed="true">전체</button
+              ><button data-filter="active" aria-pressed="false">진행 중</button
+              ><button data-filter="input" aria-pressed="false">
+                입력 필요</button
+              ><button data-filter="review" aria-pressed="false">검토</button>
+            </div>
+            <div id="project-list" aria-label="프로젝트 목록">
+              <p class="empty-list">프로젝트를 불러오고 있습니다.</p>
+            </div>
+          </div>
+          <section id="detail" class="detail" aria-label="선택한 프로젝트">
+            <div class="empty">
+              <span class="empty-icon">◫</span>
+              <h2>제작 현황을 연결하고 있습니다</h2>
+              <p>브로커에서 현재 상태를 가져옵니다.</p>
+            </div>
+          </section>
+        </section>
+        <footer>
+          <span><i class="dot"></i> homepage 세션 전용 · 로컬 접수·조회</span
+          ><span id="revision">revision —</span>
+        </footer>
+      </main>
+    </div>
+    <dialog id="request-dialog" aria-labelledby="request-title">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">NEW HOMEPAGE</p>
+          <h2 id="request-title">홈페이지 제작 요청</h2>
+        </div>
+        <button
+          class="button small"
+          data-close="request-dialog"
+          aria-label="제작 요청 닫기"
+        >
+          닫기 ×
+        </button>
+      </div>
+      <p class="help">
+        문서를 준비하고 프로젝트를 초기화한 후 homepage 큐에 접수합니다. 동일
+        요청을 다시 전송해도 중복 프로젝트를 만들지 않습니다.
+      </p>
+      <div class="form-actions">
+        <button id="sample-fill" class="button small">샘플 요청 채우기</button
+        ><button id="request-reset" class="button small">새 요청 작성</button>
+      </div>
+      <label class="field"
+        >프로젝트 ID<input
+          id="request-project"
+          placeholder="company-homepage"
+          pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}"
+          maxlength="64"
+          autocomplete="off"
+      /></label>
+      <label class="field"
+        >생성할 프로젝트 디렉터리<input id="request-directory" readonly /><small
+          >기본 상위 경로 + 프로젝트 ID로 자동 생성합니다. 저장 위치 변경은
+          도움말의 projectsRoot 설정을 참고하세요.</small
+        ></label
+      >
+      <label class="field"
+        >prd.md · 요구사항<textarea
+          id="request-prd"
+          rows="7"
+          maxlength="60000"
+        ></textarea>
+      </label>
+      <label class="field"
+        >design.md · 디자인 지침<textarea
+          id="request-design"
+          rows="6"
+          maxlength="60000"
+        ></textarea>
+      </label>
+      <div id="request-result" class="notice" role="status" hidden></div>
+      <div class="form-actions">
+        <button id="request-init" class="button">프로젝트 초기화만</button
+        ><button id="request-send" class="button primary">
+          초기화 후 homepage로 전송
+        </button>
+      </div>
+      <p class="help">
+        초기화는 새 디렉터리·문서·요청 JSON을 준비합니다. 기존 프로젝트를
+        삭제하거나 초기 상태로 되돌리지 않습니다. 실제 모델 실행은 브로커 실행
+        설정에 따릅니다.
+      </p>
+    </dialog>
+    <dialog id="help-dialog" aria-labelledby="help-title">
+      <div class="dialog-heading">
+        <h2 id="help-title">홈페이지 브로커 사용법</h2>
+        <button class="button small" data-close="help-dialog">닫기 ×</button>
+      </div>
+      <div id="help-content"></div>
+    </dialog>
+    <dialog id="inspect-dialog" aria-labelledby="inspect-title">
+      <div class="dialog-heading">
+        <h2 id="inspect-title">상태 확인</h2>
+        <button class="button small" data-close="inspect-dialog">닫기 ×</button>
+      </div>
+      <p id="inspect-note" class="help"></p>
+      <pre id="inspect-data" class="json-output"></pre>
+    </dialog>
+    <noscript
+      >진행 상태를 표시하려면 브라우저에서 JavaScript를 활성화하세요.</noscript
+    >
+  </body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Broker checkpoint (additional invariants enforced by checkpoint())",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "revision",
+    "queue_seq",
+    "projects",
+    "commands"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "queue_seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "projects": {
+      "type": "object"
+    },
+    "commands": {
+      "type": "object"
+    }
+  }
+}

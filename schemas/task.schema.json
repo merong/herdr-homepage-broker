@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task read projection",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "revision",
+    "project_id",
+    "run_id",
+    "tasks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "role",
+          "status",
+          "attempt",
+          "depends_on",
+          "writes",
+          "assignment_id"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "pm",
+              "developer",
+              "designer"
+            ]
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "waiting_input",
+              "retrying",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "writes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignment_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
