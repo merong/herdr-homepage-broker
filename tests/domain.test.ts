@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { fixture, cmd } from "./helpers.js";
+import { fixture, cmd, legacyTeam } from "./helpers.js";
 import { command, checkpoint } from "../src/contracts/validate.js";
 import {
   mutate,
@@ -38,10 +38,19 @@ test("T01 rejects malformed envelope and unknown version", () => {
   ])
     assert.throws(() => command(v));
 });
-test("T02 checkpoint preserves three roles and rejects invalid status/model/slots", async () => {
+test("T02 checkpoint preserves one PM and rejects invalid status/model/slots", async () => {
   const f = await project();
   try {
     assert.equal(checkpoint(f.s), f.s);
+    assert.equal(f.r.agents.length, 1);
+    const extra = structuredClone(f.s);
+    extra.projects.A.runs[0].agents.push(structuredClone(f.r.agents[0]));
+    assert.throws(() => checkpoint(extra), /run record/);
+    const legacy = structuredClone(f.s);
+    legacyTeam(legacy.projects.A.runs[0]);
+    assert.equal(checkpoint(legacy), legacy);
+    delete legacy.projects.A.runs[0].orchestration;
+    assert.equal(checkpoint(legacy), legacy);
     const bad = structuredClone(f.s);
     bad.projects.A.runs[0].agents[0].model = "wrong";
     assert.throws(() => checkpoint(bad));
@@ -113,12 +122,16 @@ test("T19 wrong role, duplicate event, out of order, completed task cannot regre
       () => report(f.r, { ...payload, event_id: "e2" }),
       /sequence/,
     );
-    report(f.r, {
-      ...payload,
-      event_id: "team",
-      sequence: 2,
-      kind: "team-create",
-    });
+    assert.throws(
+      () =>
+        report(f.r, {
+          ...payload,
+          event_id: "team",
+          sequence: 2,
+          kind: "team-create",
+        }),
+      /already own/,
+    );
     report(f.r, {
       ...payload,
       event_id: "e3",
@@ -181,7 +194,7 @@ test("T20 exactly initial plus two automatic retries", async () => {
     const t = makeTask("build", "developer", "build");
     f.r.tasks = [t];
     f.r.status = "running";
-    const a = f.r.agents[1];
+    const a = f.r.agents[0];
     for (let attempt = 1; attempt <= 3; attempt++) {
       t.attempt = attempt;
       t.assignment_id = "a" + attempt;

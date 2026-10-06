@@ -32,7 +32,7 @@ test("P01 project initialization is non-destructive, repeatable and preserves re
     const runtime = JSON.parse(await fs.readFile(first.runtime.file, "utf8"));
     assert.equal(runtime.session, "homepage");
     assert.equal(runtime.model, "claude-opus-5-5");
-    assert.deepEqual(runtime.roles, ["pm", "developer", "designer"]);
+    assert.deepEqual(runtime.roles, ["pm"]);
     assert.equal(runtime.higgsfield.transport, "claude-installed");
     assert.equal(
       first.directory,
@@ -157,7 +157,7 @@ test("P03 web buttons execute real broker CLI initialization/submission, dedupli
     ).json();
     assert.equal(state.consistent, true);
     assert.equal(state.files["meta.json"].status, "queued");
-    assert.equal(state.files["agents.json"].agents.length, 3);
+    assert.equal(state.files["agents.json"].agents.length, 1);
     assert.equal(JSON.stringify(state).includes('"token"'), false);
     assert.equal(
       new Set(Object.values<any>(state.files).map((x) => x.revision)).size,

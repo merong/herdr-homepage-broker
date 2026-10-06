@@ -198,6 +198,7 @@ export function checkpoint(value: any): Checkpoint {
       if (r.run_id === p.current_run_id && r.slot) slots++;
       if (
         r.orchestration !== undefined &&
+        r.orchestration?.mode !== "claude-native" &&
         (r.orchestration?.mode !== "pm-led" ||
           typeof r.orchestration.team_requested !== "boolean" ||
           (r.orchestration.team_requested &&
@@ -209,7 +210,8 @@ export function checkpoint(value: any): Checkpoint {
       if (
         r.herdr?.session_name !== "homepage" ||
         !Array.isArray(r.agents) ||
-        r.agents.length !== 3 ||
+        r.agents.length !==
+          (r.orchestration?.mode === "claude-native" ? 1 : 3) ||
         !Array.isArray(r.tasks) ||
         !Array.isArray(r.operations) ||
         !Array.isArray(r.questions) ||
@@ -219,7 +221,9 @@ export function checkpoint(value: any): Checkpoint {
       )
         fail("invalid_checkpoint", "Invalid run record");
       if (
-        new Set(r.agents.map((a: any) => a.role)).size !== 3 ||
+        new Set(r.agents.map((a: any) => a.role)).size !== r.agents.length ||
+        (r.orchestration?.mode === "claude-native" &&
+          r.agents[0].role !== "pm") ||
         r.agents.some(
           (a: any) =>
             !["pm", "developer", "designer"].includes(a.role) ||

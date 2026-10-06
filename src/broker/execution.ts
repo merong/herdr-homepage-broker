@@ -80,7 +80,7 @@ export async function executionReadiness(
       ok: !pluginIssues.length,
       detail: pluginIssues.length
         ? pluginIssues.join(" ")
-        : "homepage 연결과 실행 준비 완료 · PM / 개발자 / 디자이너 자동 구성",
+        : "homepage 연결과 실행 준비 완료 · PM 세션과 실행 지침 자동 준비",
     },
   ];
   return {
@@ -97,6 +97,6 @@ export async function executionReadiness(
     waiting_for_slot: state.slots >= config.maxProjects,
     model: config.model,
     effort: config.effort,
-    note: "프로젝트 경로·3개 역할·모델·홈페이지 스킬은 자동 준비됩니다. 도구 연결과 모델 인증은 실제 실행 시 확인합니다.",
+    note: "프로젝트 경로·PM 실행 지침·모델·홈페이지 스킬은 자동 준비됩니다. 도구 연결과 모델 인증은 실제 실행 시 확인합니다.",
   };
 }

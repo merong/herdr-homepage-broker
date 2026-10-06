@@ -143,3 +143,25 @@ export class FakeHerdr extends Herdr {
     throw new Error("Unhandled fake CLI " + args.slice(0, 2));
   }
 }
+
+// Persisted pre-0.7 runs retain the original PM-led three-pane contract.
+export function legacyTeam(r: import("../src/contracts/types.js").Run) {
+  const pm = r.agents[0];
+  r.orchestration = {
+    mode: "pm-led",
+    team_requested: false,
+    requested_by: null,
+    requested_at: null,
+  };
+  r.agents = [
+    pm,
+    ...(["developer", "designer"] as const).map((role) => ({
+      ...structuredClone(pm),
+      agent_id: pm.agent_id + "-" + role,
+      role,
+      token: randomUUID(),
+      status: "waiting" as const,
+      waiting_reason: "orchestrator",
+    })),
+  ];
+}

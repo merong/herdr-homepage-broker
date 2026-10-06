@@ -3,7 +3,7 @@
 `homepage` 전용 Herdr 세션에서 홈페이지 제작 요청을 접수하고 프로젝트·에이전트·작업 상태를 JSON으로 관리하는 macOS 플러그인입니다.
 
 - 웹 UI에서 샘플 요청 작성 → 디렉터리·PRD/design 초기화 → 브로커 CLI로 큐 접수.
-- Herdr CLI와 Socket API로 최대 2개 프로젝트를 처리. 프로젝트는 PM만 먼저 실행하고, PM의 인증된 `team-create` 보고로 개발자·디자이너를 생성합니다. 총 3개 역할 제한과 중복 생성 방지는 브로커에서 강제합니다.
+- Herdr CLI와 Socket API로 최대 2개 프로젝트를 처리. 프로젝트마다 PM pane 하나만 생성합니다. 실행 후 지침 파일을 프롬프트로 전달하고, PM은 Claude 내부 에이전트로 개발·디자인 작업을 수행합니다. 작업 보고와 JSON 상태 갱신은 PM이 담당합니다.
 - Claude Code `claude-opus-5-5`, high effort. 설치된 홈페이지 스킬과 Claude의 Higgsfield MCP를 자동으로 사용.
 - `meta.json`, `task.json`, `agents.json` 상태 확인, 동일 요청 재전송 방지, 재시작 후 명시적 재개.
 - 내장 웹 UI: 검색·필터·입력 요청·미리보기·JSON 상태 확인·환경 체크·도움말·제작 시작/작업 재개.
@@ -21,7 +21,7 @@ herdr --session homepage
 별도 터미널에서 플러그인을 설치합니다.
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.6.1 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.7.0 --yes
 ```
 
 `homepage` 작업공간에서 시작합니다. 작업공간이 없다면 `herdr --session homepage workspace create --cwd "$HOME" --label homepage-control --focus`로 만듭니다.

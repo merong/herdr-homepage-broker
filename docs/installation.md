@@ -17,7 +17,7 @@ Herdr가 없다면 [공식 설치 안내](https://herdr.dev/)를 따릅니다. `
 ## GitHub 릴리스 설치
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.6.1 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.7.0 --yes
 ```
 
 설치가 의존성 설치와 TypeScript·정적 UI 빌드를 실행합니다. `dist`와 `node_modules`는 Git에 포함하지 않습니다. `--ref`를 고정하면 재현 가능한 버전을 설치할 수 있습니다.
@@ -40,7 +40,7 @@ herdr --session homepage plugin action invoke web-status --plugin herdr-homepage
 기본 사용에는 설정 파일을 만들 필요가 없습니다. CLI 또는 웹의 프로젝트 초기화에서 `homepage-runtime.json`을 생성하고 세션, 역할, 모델, 스킬, MCP 사용 방식을 준비합니다. 기존 프로젝트도 브로커 시작 시 자동으로 준비합니다. 초기화나 업데이트만으로 제작을 시작하지 않으며 프로젝트별 시작·재개 버튼을 사용합니다.
 
 - 세션: `homepage`, 동시 프로젝트: 최대 2개.
-- 에이전트: PM / 개발자 / 디자이너, `claude-opus-5-5`, high.
+- 에이전트: Herdr PM 1명 + Claude 내부 개발자·디자이너 역할, `claude-opus-5-5`, high.
 - 스킬: `CLAUDE_CONFIG_DIR` 또는 `~/.claude` 아래 `skills/higgsfield-websites/SKILL.md` (대체 이름 `higgsfield-website-builder`) 자동 선택. 다른 스킬은 활성화하지 않습니다. 사용자 지정 `skills` 경로가 있으면 우선합니다.
 - MCP: Claude.ai에 연결된 Higgsfield의 기존 인증을 사용합니다. 별도 broker stdio 매핑은 필요하지 않습니다. 선택적으로 `mcp` 설정을 제공하면 기존 broker stdio 방식으로 동작합니다.
 - 소스: 프로젝트 `app/`, 미리보기: localhost. 배포·게시 명령은 실행하지 않습니다.
@@ -67,11 +67,11 @@ Herdr 0.9.3에는 `plugin update`가 없습니다. 원하는 Git 태그로 `plug
 
 ```sh
 herdr --session homepage plugin action invoke stop --plugin herdr-homepage-broker
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.6.1 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.7.0 --yes
 herdr --session homepage plugin action invoke start --plugin herdr-homepage-broker
 ```
 
-`v0.6.1`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
+`v0.7.0`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
 
 Herdr 프로그램 자체의 업데이트는 별도 `herdr update` 명령입니다. 플러그인 릴리스 설치를 위해 Herdr 전체 세션을 강제 종료하지 않습니다.
 

@@ -328,6 +328,14 @@ function projectDetail(p) {
     root.append(info);
   }
   root.append(section("담당 에이전트", "Claude Opus 5.5 · High"));
+  if (p.orchestration?.mode === "claude-native")
+    root.append(
+      el(
+        "p",
+        "help",
+        "Herdr PM 1명 · Claude 내부 개발자/디자이너. 내부 작업 진행은 PM 보고로 표시하며, 별도 Herdr pane은 생성하지 않습니다.",
+      ),
+    );
   if (p.orchestration?.mode === "pm-led")
     root.append(
       el(
@@ -417,7 +425,7 @@ function projectDetail(p) {
       el(
         "small",
         "",
-        `${roles[t.role] ?? t.role} · ${t.task_id} · 실행 ${t.attempt}회`,
+        `${roles[t.role] ?? t.role}${p.orchestration?.mode === "claude-native" ? " · 실행/보고 PM" : ""} · ${t.task_id} · 실행 ${t.attempt}회`,
       ),
     );
     if (t.depends_on.length)

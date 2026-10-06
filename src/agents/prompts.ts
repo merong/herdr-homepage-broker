@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Agent, Config, Project, Run, Task } from "../contracts/types.js";
 import { atomic, hash } from "../storage/store.js";
+import { nativePrompt } from "./native.js";
 import { brokerSocket } from "../config.js";
 export async function rolePrompt(c: Config, p: Project, r: Run, a: Agent) {
   const skills = [];
@@ -19,6 +20,13 @@ export async function rolePrompt(c: Config, p: Project, r: Run, a: Agent) {
       2,
     ),
   );
+  if (r.orchestration?.mode === "claude-native")
+    return nativePrompt(
+      c,
+      p,
+      r,
+      skills.map((s) => `Source: ${s.path}\n${s.text}`).join("\n\n"),
+    );
   const orchestration =
     r.orchestration?.mode === "pm-led"
       ? a.role === "pm"
@@ -76,9 +84,29 @@ export async function assignment(
       2,
     ),
   );
-  return `Task ${t.task_id}: ${t.title}\nAssignment file: ${file}. Read it and the immutable inputs. Write ownership: ${t.writes.join(", ") || "planning only"}. The assets/ and reports/ paths are relative to ${path.join(p.directory, ".herdr/runs", r.run_id)}. Deliver report through CLI; never edit the state files. Relevant user answers: ${JSON.stringify(r.questions.filter((q) => q.task_id === t.task_id && q.status === "answered").map((q) => ({ question: q.question, response: q.response })))}. Prior result: ${t.result ?? "none"}`;
+  const message = `Task ${t.task_id}: ${t.title}\nAssignment file: ${file}. Read it and the immutable inputs. Write ownership: ${t.writes.join(", ") || "planning only"}. The assets/ and reports/ paths are relative to ${path.join(p.directory, ".herdr/runs", r.run_id)}. Deliver report through CLI; never edit the state files. Relevant user answers: ${JSON.stringify(r.questions.filter((q) => q.task_id === t.task_id && q.status === "answered").map((q) => ({ question: q.question, response: q.response })))}. Prior result: ${t.result ?? "none"}`;
+  if (r.orchestration?.mode === "claude-native") {
+    const taskFile = path.join(
+      p.directory,
+      ".herdr/runs",
+      r.run_id,
+      `task-${t.assignment_id}.md`,
+    );
+    await atomic(taskFile, message + "\n");
+    const instructions = path.join(
+      p.directory,
+      ".herdr/runs",
+      r.run_id,
+      "pm-instructions.md",
+    );
+    return `Initialize this PM session by reading and following ${JSON.stringify(instructions)}. Then read ${JSON.stringify(taskFile)} and execute only that assignment. Use Claude native agents when helpful; all broker reports come from this PM.`;
+  }
+  return message;
 }
-export const claudeArgs = (systemFile: string, installedMcp = false) => [
+export const claudeArgs = (
+  systemFile: string | undefined,
+  installedMcp = false,
+) => [
   "--model",
   "claude-opus-5-5",
   "--effort",
@@ -87,6 +115,5 @@ export const claudeArgs = (systemFile: string, installedMcp = false) => [
     ? []
     : ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}']),
   "--setting-sources=",
-  "--append-system-prompt-file",
-  systemFile,
+  ...(systemFile ? ["--append-system-prompt-file", systemFile] : []),
 ];

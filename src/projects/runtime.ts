@@ -4,7 +4,11 @@ import { Config, roles, fail } from "../contracts/types.js";
 import { atomic, realDirectory } from "../storage/store.js";
 
 // Broker-owned metadata only. Never rewrite PRD/design, credentials or Claude settings.
-export async function prepareRuntime(c: Config, directory: string) {
+export async function prepareRuntime(
+  c: Config,
+  directory: string,
+  mode: "claude-native" | "pm-led" | "legacy" = "claude-native",
+) {
   if ((await fs.realpath(directory)) !== directory)
     fail("unsafe_path", "Symlink project refused");
   await realDirectory(path.join(directory, "app"));
@@ -13,14 +17,24 @@ export async function prepareRuntime(c: Config, directory: string) {
     session: c.session,
     model: c.model,
     effort: c.effort,
-    roles: [...roles],
-    orchestration: {
-      mode: "pm-led",
-      bootstrap: "pm",
-      team_request: "report:team-create",
-      workers: ["developer", "designer"],
-      max_agents: 3,
-    },
+    roles: mode === "claude-native" ? ["pm"] : [...roles],
+    orchestration:
+      mode === "claude-native"
+        ? {
+            mode,
+            bootstrap: "pm",
+            herdr_agents: 1,
+            native_agents: ["homepage-developer", "homepage-designer"],
+            helper_limit: { value: 2, enforcement: "prompt" },
+            reporting: "pm",
+          }
+        : {
+            mode,
+            bootstrap: "pm",
+            team_request: "report:team-create",
+            workers: ["developer", "designer"],
+            max_agents: 3,
+          },
     max_projects: c.maxProjects,
     start_mode: c.autoStart ? "queue" : "explicit",
     skills: c.skills,

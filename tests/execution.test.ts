@@ -5,7 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Broker } from "../src/broker/broker.js";
 import { current } from "../src/domain/engine.js";
-import { fixture, pmReport, FakeHerdr, cmd } from "./helpers.js";
+import { fixture, pmReport, FakeHerdr, cmd, legacyTeam } from "./helpers.js";
 async function setup(ready: boolean | "native" = true) {
   const f = await fixture();
   f.config.autoStart = false;
@@ -286,10 +286,17 @@ test("E07 installed Claude MCP needs no broker mapping and only the requested pr
       assert.equal(args.includes("--disallowedTools"), false);
       assert.ok(args.includes("--setting-sources="));
       assert.ok(args.every((arg) => arg.length > 0 && !/[\n\r\x00]/.test(arg)));
-      const systemFile = args[args.indexOf("--append-system-prompt-file") + 1];
+      assert.equal(args.includes("--append-system-prompt-file"), false);
+      const p = f.b.store.state.projects.A;
+      const systemFile = path.join(
+        p.directory,
+        ".herdr/runs",
+        p.current_run_id,
+        "pm-instructions.md",
+      );
       assert.match(
         await fs.readFile(systemFile, "utf8"),
-        /Higgsfield MCP already installed/,
+        /installed\/authenticated Higgsfield MCP/,
       );
       assert.equal(args[args.indexOf("--model") + 1], "claude-opus-5-5");
       assert.equal(args[args.indexOf("--effort") + 1], "high");
@@ -371,6 +378,8 @@ test("E09 status remains readable from committed JSON while agent startup is wai
 test("E10 PM authority gates team creation, plan, replay and restart", async () => {
   const f = await setup("native");
   try {
+    legacyTeam(current(f.b.store.state.projects.A));
+    await f.b.save();
     await f.send(f.input());
     await f.b.tick();
     await f.b.tick();
@@ -421,7 +430,10 @@ test("E10 PM authority gates team creation, plan, replay and restart", async () 
     await f.b.handle(create);
     assert.equal(f.h.panes.length, 1, "receipt commits before provisioning");
     r = current(f.b.store.state.projects.A);
-    assert.equal(r.orchestration!.requested_by, r.agents[0].agent_id);
+    assert.equal(
+      r.orchestration?.mode === "pm-led" && r.orchestration.requested_by,
+      r.agents[0].agent_id,
+    );
     assert.equal(
       r.tasks[0].status,
       "running",
@@ -480,5 +492,168 @@ test("E10 PM authority gates team creation, plan, replay and restart", async () 
   } finally {
     await f.b.close();
     await fs.rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("E11 native PM uses file bootstrap, owns all logical tasks and survives restart without another pane", async () => {
+  const f = await setup("native");
+  try {
+    await f.send(f.input());
+    for (let i = 0; i < 3; i++) await f.b.tick();
+    let p = f.b.store.state.projects.A,
+      r = current(p);
+    assert.equal(r.agents.length, 1);
+    assert.equal(r.orchestration?.mode, "claude-native");
+    const start = f.h.calls.find((c) => c[0] === "agent" && c[1] === "start")!;
+    assert.deepEqual(start.slice(start.indexOf("--") + 1), [
+      "--model",
+      "claude-opus-5-5",
+      "--effort",
+      "high",
+      "--setting-sources=",
+    ]);
+    const bootstrap = f.h.calls.find(
+      (c) => c[0] === "agent" && c[1] === "prompt",
+    )![3];
+    assert.match(bootstrap, /Initialize this PM session/);
+    assert.match(bootstrap, /pm-instructions.md/);
+    assert.ok(bootstrap.length < 1200);
+    for (const role of ["developer", "designer"]) {
+      const definition = await fs.readFile(
+        path.join(p.directory, ".claude/agents", `homepage-${role}.md`),
+        "utf8",
+      );
+      assert.match(definition, /model: inherit\neffort: high/);
+      assert.match(definition, /homepage-orchestration.md/);
+    }
+    await assert.rejects(
+      () => f.b.handle(pmReport(p, "team-create")),
+      /already own/,
+    );
+    await f.b.handle(
+      pmReport(p, "plan", {
+        tasks: [
+          {
+            task_id: "design",
+            role: "designer",
+            title: "Image",
+            writes: ["assets/"],
+            depends_on: [],
+          },
+          {
+            task_id: "build",
+            role: "developer",
+            title: "Build",
+            writes: ["app/"],
+            depends_on: [],
+          },
+        ],
+      }),
+    );
+    await f.b.tick();
+    r = current(f.b.store.state.projects.A);
+    assert.equal(r.agents[0].task_id, "design");
+    assert.equal(r.tasks.filter((t) => t.status === "running").length, 1);
+    const oldAssignment = r.tasks[1].assignment_id;
+    await f.b.close();
+    f.b = new Broker(f.config, f.h);
+    await f.b.start(false);
+    clearInterval(f.b.timer);
+    p = f.b.store.state.projects.A;
+    await f.b.handle(cmd("resume", p));
+    for (let i = 0; i < 3; i++) await f.b.tick();
+    r = current(f.b.store.state.projects.A);
+    assert.notEqual(r.tasks[1].assignment_id, oldAssignment);
+    const sendTask = async (kind: string, extra = {}) => {
+      const p = f.b.store.state.projects.A,
+        r = current(p),
+        a = r.agents[0];
+      const t = r.tasks.find((t) => t.task_id === a.task_id)!;
+      return f.b.handle(
+        cmd("report", p, {
+          agent_id: a.agent_id,
+          token: a.token,
+          task_id: t.task_id,
+          assignment_id: t.assignment_id,
+          attempt: t.attempt,
+          event_id: randomUUID(),
+          sequence: a.seq + 1,
+          kind,
+          ...extra,
+        }),
+      );
+    };
+    await sendTask("progress", {
+      result: "homepage-designer completed its image handoff",
+    });
+    const ui = await (await fetch(f.b.dashboard!.url + "/api/status")).json();
+    assert.equal(ui.projects[0].agents.length, 1);
+    assert.match(ui.projects[0].tasks[1].result, /homepage-designer/);
+    await sendTask("completed", { result: "design ready" });
+    await f.b.tick();
+    assert.equal(
+      current(f.b.store.state.projects.A).agents[0].task_id,
+      "build",
+    );
+    await sendTask("completed", { result: "source ready" });
+    await f.b.tick();
+    assert.equal(
+      f.h.calls.filter((c) => c[0] === "agent" && c[1] === "start").length,
+      1,
+    );
+    assert.equal(
+      f.h.calls.filter((c) => c[0] === "pane" && c[1] === "split").length,
+      0,
+    );
+    assert.equal(f.h.panes.length, 1);
+  } finally {
+    await f.b.close();
+    await fs.rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("E12 native PM requests broker media with its own capability", async () => {
+  const f = await setup();
+  try {
+    await f.send(f.input());
+    for (let i = 0; i < 3; i++) await f.b.tick();
+    const p = f.b.store.state.projects.A,
+      r = current(p),
+      a = r.agents[0];
+    const result = await f.b.handle(
+      cmd("media-request", p, {
+        agent_id: a.agent_id,
+        token: a.token,
+        arguments: { prompt: "fixture" },
+      }),
+    );
+    assert.ok(result.job_id);
+    assert.equal(
+      current(f.b.store.state.projects.A).media[0].agent_id,
+      a.agent_id,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test("E13 native initialization preserves an existing user agent definition", async () => {
+  const f = await setup("native");
+  try {
+    const p = f.b.store.state.projects.A;
+    const dir = path.join(p.directory, ".claude/agents");
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, "homepage-designer.md");
+    await fs.writeFile(file, "user-owned instructions");
+    await f.send(f.input());
+    await f.b.tick();
+    await f.b.tick();
+    assert.equal(await fs.readFile(file, "utf8"), "user-owned instructions");
+    assert.equal(
+      f.h.calls.filter((c) => c[0] === "agent" && c[1] === "start").length,
+      0,
+    );
+  } finally {
+    await f.close();
   }
 });

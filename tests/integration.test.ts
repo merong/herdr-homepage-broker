@@ -6,7 +6,7 @@ import net from "node:net";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import { fixture, cmd, pmReport, FakeHerdr } from "./helpers.js";
+import { fixture, cmd, pmReport, FakeHerdr, legacyTeam } from "./helpers.js";
 import { Broker } from "../src/broker/broker.js";
 import { request } from "../src/broker/client.js";
 import { current, makeTask, report } from "../src/domain/engine.js";
@@ -74,7 +74,7 @@ test("T04/T08 IPC deduplicates/conflicts and publishes consistent JSON without a
       ),
     );
     assert.equal(new Set(files.map((f) => f.revision)).size, 1);
-    assert.equal(files[2].agents.length, 3);
+    assert.equal(files[2].agents.length, 1);
     assert.equal(files[2].agents[0].token, undefined);
     assert.equal(f.h.calls.length, 0);
   } finally {
@@ -108,7 +108,7 @@ test("T09 restart preserves requests but requires explicit resume; republishes m
       JSON.parse(
         await fs.readFile(path.join(p.directory, "agents.json"), "utf8"),
       ).agents.length,
-      3,
+      1,
     );
     await next.handle(cmd("resume", next.store.state.projects.A));
     assert.equal(current(next.store.state.projects.A).status, "queued");
@@ -152,7 +152,7 @@ test("T11 byte fragmented UTF-8, multiplexed IDs, oversized frames and early clo
     await fs.rm(f.root, { recursive: true });
   }
 });
-test("T14/T31 two PMs bootstrap, each requests its team, third project remains queued", async () => {
+test("T14/T31 two PMs use native helpers, third project remains queued", async () => {
   const f = await setup();
   try {
     for (const id of ["A", "B", "C"]) await f.b.handle(f.submit(id));
@@ -169,13 +169,11 @@ test("T14/T31 two PMs bootstrap, each requests its team, third project remains q
     const rs = Object.values(f.b.store.state.projects).map(current);
     assert.equal(rs[2].status, "queued");
     assert.equal(f.h.panes.length, 2, "only PMs exist before their requests");
-    for (const id of ["A", "B"])
-      await f.b.handle(pmReport(f.b.store.state.projects[id], "team-create"));
     await f.b.tick();
     assert.equal(f.h.calls.filter((c) => c[0] === "workspace").length, 2);
     assert.equal(
       f.h.calls.filter((c) => c[0] === "agent" && c[1] === "start").length,
-      6,
+      2,
     );
     assert.equal(
       f.h.calls.filter((c) => c[0] === "agent" && c[1] === "prompt").length,
@@ -210,7 +208,7 @@ test("T15/T16 partial input waiting keeps independent task moving; full wait rel
     r.questions.push({
       request_id: "q",
       run_id: r.run_id,
-      agent_id: r.agents[2].agent_id,
+      agent_id: r.agents[0].agent_id,
       task_id: "design",
       kind: "execution_choice",
       question: "logo?",
@@ -234,7 +232,7 @@ test("T15/T16 partial input waiting keeps independent task moving; full wait rel
     assert.equal(r.tasks[1].status, "running");
     assert.equal(r.status, "running");
     r.tasks[1].status = "waiting_input";
-    r.agents[1].task_id = null;
+    r.agents[0].task_id = null;
     await f.b.tick();
     assert.equal(r.status, "waiting_input");
     assert.equal(r.slot, false);
@@ -250,8 +248,6 @@ test("T21 cancellation closes only recorded matching panes and cannot be revived
     f.b.mcp = { connect: async () => {}, close: () => {} } as any;
     await f.b.tick();
     await f.b.tick();
-    await f.b.tick();
-    await f.b.handle(pmReport(f.b.store.state.projects.A, "team-create"));
     await f.b.tick();
     const p = f.b.store.state.projects.A;
     f.h.panes.push({
@@ -526,6 +522,8 @@ test("T29 replacement closes old three agents before any new role starts", async
   const f = await setup();
   try {
     await f.b.handle(f.submit());
+    legacyTeam(current(f.b.store.state.projects.A));
+    await f.b.save();
     f.config.allowExecution = true;
     f.b.mcp = { connect: async () => {}, close: () => {} } as any;
     await f.b.tick();

@@ -4,7 +4,7 @@
 
 웹 UI에서 **제작 요청 → 샘플 요청 채우기**를 누릅니다. 고유 프로젝트 ID, PRD와 디자인 초안이 입력됩니다. 내용을 검토한 뒤 **프로젝트 초기화만** 또는 **초기화 후 homepage로 전송**을 선택합니다.
 
-초기화는 새 프로젝트 폴더에 `prd.md`, `design.md`, `homepage-init.json`, `homepage-request.json`, `app/`, `homepage-runtime.json`을 만듭니다. 실행 설정에는 세션·모델·3개 역할·스킬·MCP 방식이 자동 기록됩니다. 기존 폴더·수정된 문서를 덮어쓰지 않습니다. 브로커에 접수되면 `meta.json`, `task.json`, `agents.json`, `.herdr/runs/`가 추가됩니다. 초기화는 기존 프로젝트 삭제나 재설정이 아닙니다.
+초기화는 새 프로젝트 폴더에 `prd.md`, `design.md`, `homepage-init.json`, `homepage-request.json`, `app/`, `homepage-runtime.json`을 만듭니다. 실행 설정에는 세션·모델·PM 1명·Claude 내부 역할·스킬·MCP 방식이 자동 기록됩니다. 기존 폴더·수정된 문서를 덮어쓰지 않습니다. 브로커에 접수되면 `meta.json`, `task.json`, `agents.json`, `.herdr/runs/`가 추가됩니다. 초기화는 기존 프로젝트 삭제나 재설정이 아닙니다.
 
 웹 버튼 → 고정된 브로커 CLI subcommand → IPC 큐 접수 → 스케줄러의 Herdr CLI(`--session homepage`) 순서로 전달됩니다. HTTP에서 임의 shell 명령이나 에이전트 프롬프트를 실행하지 않습니다. 접수 후에는 queued로 대기하며, 프로젝트의 **제작 시작**을 눌러 실행합니다.
 
@@ -87,15 +87,23 @@ CLI 사전 점검은 `node dist/src/cli.js project readiness --project ID`입니
 
 웹 서버는 loopback에서만 동작합니다. 상태 읽기와 초기화·submit·시작/재개 작업을 HTTP로 노출하며 변경 요청은 같은 출처와 CSRF 토큰을 확인합니다. 답변·취소·피드백은 기존 CLI를 사용합니다. 이 웹 서버를 원격 공개용 REST 큐로 사용하지 않습니다.
 
-## PM이 팀을 생성하는 시작 흐름
+## PM 한 명과 프롬프트 초기화 (0.7.0)
 
-새 run은 **PM 오케스트레이터 한 명만** 시작합니다. `agents.json`에는 세 역할이 예약되지만, 개발자·디자이너는 `waiting_reason: "orchestrator"`이며 아직 pane/terminal ID가 없습니다.
+새 프로젝트와 피드백 run은 `meta.json.orchestration.mode: "claude-native"`를 사용합니다. **프로젝트마다 Herdr PM pane 한 개만** 생성하며 `agents.json`에도 PM 한 명만 기록합니다. 개발·디자인은 논리적인 작업 역할이며, `task.json`의 모든 작업은 PM이 실행하고 보고합니다. PM은 직접 구현하거나 같은 Claude 세션의 내부 에이전트를 활용할 수 있습니다.
 
-PM은 PRD/design과 실행 폴더의 `homepage-orchestration.md` 지침을 읽고, 현재 `pm-assignment.json`의 권한·작업 식별 정보를 사용해 `report` 명령의 `payload.kind: "team-create"`를 전송합니다. 별도 역할·모델·실행 명령은 지정하지 않습니다. 브로커는 PM의 현재 planning assignment만 허용하고 동일 workspace에 고정된 개발자·디자이너를 생성합니다. 그다음 PM은 sequence를 증가시켜 작업 계획을 보고합니다. 생성 요청 전 계획 제출은 거부합니다.
+초기화 순서는 다음과 같습니다.
 
-`meta.json.orchestration`에는 생성 요청 여부, 요청한 PM ID, 요청 시각을 저장합니다. 생성 의도를 먼저 저장하므로 중복 보고·브로커 재시작에도 이미 실행한 에이전트를 추가 생성하지 않습니다. 결과가 불명확한 Herdr 시작 요청은 기존 대조 절차로 처리합니다. 작업자는 다른 에이전트를 만들 수 없으며 총 역할 수는 PM 포함 3개입니다.
+1. 실행 폴더에 `pm-instructions.md`, `homepage-orchestration.md`와 선택된 홈페이지 스킬 지침을 저장합니다. 프로젝트 `.claude/agents/homepage-developer.md`, `homepage-designer.md`에 Claude 내부 역할을 준비합니다. 기존 사용자 파일은 덮어쓰지 않습니다.
+2. Herdr `workspace create`의 기본 터미널에서 `agent start`로 Claude를 실행합니다. 기본 Claude 인자는 `--model claude-opus-5-5 --effort high --setting-sources=`입니다. 지침 본문이나 에이전트 JSON을 명령줄에 넣지 않습니다.
+3. 입력 준비가 확인되면 Herdr `agent prompt`로 **PM 지침 파일과 현재 작업 파일을 읽고 수행하라**는 짧은 메시지를 보냅니다. `--append-system-prompt-file`과 `--agents`는 새 실행에 사용하지 않습니다. 별도 유료 초기화 턴 없이 첫 작업에서 지침을 함께 읽습니다.
+4. PM은 `plan`을 바로 보고합니다. 브로커는 논리적 개발·디자인·검토 작업을 PM에게 한 번에 하나씩 배정합니다. PM이 필요한 내부 에이전트를 사용하고 결과를 취합해 `progress`/`completed`를 보고합니다. 내부 에이전트가 끝나기 전에 작업 완료를 보고하지 않도록 지시합니다.
+5. 모든 작업 완료, localhost 미리보기 준비, PM 유휴 확인 후 사용자 검토 대기로 전환합니다.
 
-지침은 PM 시스템 프롬프트에도 직접 포함되며 홈페이지 전용 스킬을 추가로 설치할 필요가 없습니다. 업데이트 전부터 실행 중이던 팀은 유지하고, 새 프로젝트나 피드백 run부터 적용합니다. 설치된 Claude의 보안·인증 승인을 자동 우회하지 않습니다.
+내부 개발자·디자이너는 PM 모델을 상속하고 high effort를 사용합니다. 내부 작업자 최대 2명은 프롬프트 지침이며 브로커가 Claude 내부 동시 실행을 강제로 제한하거나 직접 관측하는 것은 아닙니다. 웹 UI는 PM의 Herdr 상태와 작업별 진행 보고를 표시합니다. 내부 역할에 가짜 Herdr pane ID를 만들지 않습니다. Higgsfield 설치 모드에서는 PM 또는 내부 디자이너가 생성하고, 선택적인 broker stdio 모드에서는 PM이 `media-request`를 요청합니다.
+
+기존 `pm-led` 및 이전 실행의 pane·작업 기록은 유지합니다. 기존 실행을 재개하면 원래 구성을 사용하고, 새 프로젝트나 피드백 run부터 한 명 방식으로 전환합니다. `team-create`는 기존 실행의 호환 용도로만 남습니다. Agent/Task/Skill을 막는 도구 제한은 추가하지 않습니다.
+
+명령 계약은 [Herdr CLI](https://herdr.dev/docs/cli-reference/)와 설치된 Herdr 0.9.3 도움말을 확인했습니다. Claude 내부 역할 파일과 모델 상속은 [Claude 공식 subagent 문서](https://code.claude.com/docs/en/sub-agents)를 기준으로 합니다.
 
 ## Herdr 원본 CLI로 실행 확인
 
@@ -137,6 +145,6 @@ CLI/API 차이를 확인할 때는 설치된 바이너리의 `herdr api schema -
 
 ## Claude 도구 및 스킬 사용 (0.6.1)
 
-에이전트 시작 명령에서 `--disallowedTools`와 `--disable-slash-commands`를 제거했습니다. 플러그인이 Agent/Task/Skill을 일괄 차단하거나 Claude의 스킬 기능 전체를 비활성화하지 않습니다. 홈페이지 전용 스킬 사용과 PM이 3개 역할을 관리하는 작업 지침은 유지합니다.
+에이전트 시작 명령에서 `--disallowedTools`와 `--disable-slash-commands`를 제거했습니다. 플러그인이 Agent/Task/Skill을 일괄 차단하거나 Claude의 스킬 기능 전체를 비활성화하지 않습니다. 홈페이지 전용 스킬 사용 지침은 유지합니다. 0.7.0부터는 위의 PM 한 명 방식이 적용됩니다.
 
 변경은 업데이트된 브로커가 새로 시작하는 Claude 프로세스부터 적용됩니다. 이미 실행 중인 프로세스의 시작 인자는 바뀌지 않습니다. 진행 중인 제작을 중단하지 말고 완료 후 브로커를 업데이트하여 다음 실행부터 적용하세요. 이 변경만으로 제작 품질 향상을 검증한 것은 아닙니다.

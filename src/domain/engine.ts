@@ -25,11 +25,18 @@ import {
 } from "../storage/store.js";
 export const current = (p: Project) =>
   p.runs.find((r) => r.run_id === p.current_run_id)!;
-// Runs created before PM-led orchestration keep their existing team and lineage.
+// Existing runs keep their team and lineage. New runs have a single Herdr PM.
 export const requiredAgents = (r: Run) =>
-  r.orchestration?.mode === "pm-led" && !r.orchestration.team_requested
+  r.orchestration?.mode === "claude-native" ||
+  (r.orchestration?.mode === "pm-led" && !r.orchestration.team_requested)
     ? r.agents.filter((a) => a.role === "pm")
     : r.agents;
+// Task roles describe work ownership, not extra Herdr sessions in native mode.
+export const taskAgent = (r: Run, t: Task) =>
+  r.agents.find(
+    (a) =>
+      a.role === (r.orchestration?.mode === "claude-native" ? "pm" : t.role),
+  )!;
 export function target(s: Checkpoint, c: Command) {
   const p = s.projects[c.project_id ?? ""];
   if (!p) fail("unknown_project", "Project not found");
@@ -148,7 +155,7 @@ export function overlaps(a: string, b: string) {
   );
 }
 export function canAssign(r: Run, t: Task) {
-  const a = r.agents.find((a) => a.role === t.role)!;
+  const a = taskAgent(r, t);
   return (
     !a.task_id &&
     idleAgent(a) &&
@@ -171,7 +178,7 @@ export function report(r: Run, payload: any) {
   const t = r.tasks.find((t) => t.task_id === payload.task_id);
   if (
     !t ||
-    t.role !== a.role ||
+    taskAgent(r, t)?.agent_id !== a.agent_id ||
     t.assignment_id !== payload.assignment_id ||
     t.attempt !== payload.attempt
   )
@@ -209,7 +216,7 @@ export function report(r: Run, payload: any) {
   } else if (kind === "plan") {
     if (a.role !== "pm" || t.task_id !== "plan")
       fail("report_owner", "Only PM planning task can submit plan");
-    if (r.orchestration && !r.orchestration.team_requested)
+    if (r.orchestration?.mode === "pm-led" && !r.orchestration.team_requested)
       fail(
         "team_required",
         "PM must send team-create before submitting its plan",
@@ -302,7 +309,7 @@ export async function newRun(
     payload.inputs,
     prepared,
   );
-  const agents: Agent[] = roles.map((role) => ({
+  const agents: Agent[] = (["pm"] as const).map((role) => ({
     agent_id: `${p.project_id}-${run_id.slice(0, 8)}-${role}`,
     role,
     model: c.model,
@@ -323,17 +330,14 @@ export async function newRun(
     slot: false,
     resume_required: false,
     orchestration: {
-      mode: "pm-led",
-      team_requested: false,
-      requested_by: null,
-      requested_at: null,
+      mode: "claude-native",
     },
     agents,
     tasks: [
       makeTask(
         "plan",
         "pm",
-        "Read PRD/design, create developer and designer with team-create, then plan website tasks and file ownership",
+        "Read PRD/design and plan website tasks. Execute through this PM session using Claude native homepage-developer/homepage-designer agents when useful. No additional Herdr panes.",
       ),
     ],
     questions: [],
@@ -473,7 +477,7 @@ export async function mutate(
     for (const t of r.tasks)
       if (t.status === "running") {
         t.status = "pending";
-        r.agents.find((a) => a.role === t.role)!.task_id = null;
+        taskAgent(r, t).task_id = null;
       }
     r.resume_required = false;
     r.slot = false;

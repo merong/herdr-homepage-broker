@@ -28,7 +28,9 @@ export async function board(
     status: any;
   const render = () => {
     if (closed) return;
-    const lines = ["HOMEPAGE  |  최대 2개 프로젝트 · PM / 개발자 / 디자이너"];
+    const lines = [
+      "HOMEPAGE  |  최대 2개 프로젝트 · 프로젝트당 PM 1명 · Claude 내부 에이전트",
+    ];
     if (connectionError) {
       lines.push(
         "브로커 연결 끊김 · 자동 재연결 대기",

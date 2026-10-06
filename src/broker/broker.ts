@@ -33,6 +33,7 @@ import {
   authenticate,
   validateReplacement,
   requiredAgents,
+  taskAgent,
 } from "../domain/engine.js";
 import { Herdr, HerdrRejected, Lines, Observer } from "../herdr/transport.js";
 import { rolePrompt, claudeArgs, assignment } from "../agents/prompts.js";
@@ -81,7 +82,11 @@ export class Broker {
       const s = structuredClone(this.store.state);
       for (const p of Object.values(s.projects)) {
         if (!terminal.has(current(p).status))
-          await prepareRuntime(this.config, p.directory);
+          await prepareRuntime(
+            this.config,
+            p.directory,
+            current(p).orchestration?.mode ?? "legacy",
+          );
         for (const r of p.runs) {
           for (const a of r.agents) a.runtime.fresh = false;
           for (const op of r.operations)
@@ -250,6 +255,7 @@ export class Broker {
       await prepareRuntime(
         this.config,
         this.store.state.projects[c.project_id!].directory,
+        r.orchestration?.mode ?? "legacy",
       );
       const next = structuredClone(this.store.state);
       if (c.payload.action === "resume")
@@ -280,7 +286,7 @@ export class Broker {
       const { p, r } = target(this.store.state, c);
       validateReplacement(r, c);
       await readInputs(c.payload.inputs);
-      // Terminate the settled old role panes before a replacement can create three new agents.
+      // Terminate the settled old role panes before a replacement starts its PM.
       for (const a of r.agents) {
         if (!a.herdr.pane_id || a.runtime.status === "stopped") continue;
         await this.operation(
@@ -320,8 +326,12 @@ export class Broker {
           a.role !== "pm"
         )
           fail("report_owner", "Only PM manages preview");
-        if (c.type === "media-request" && a.role !== "designer")
-          fail("report_owner", "Only designer requests media");
+        if (
+          c.type === "media-request" &&
+          a.role !==
+            (r.orchestration?.mode === "claude-native" ? "pm" : "designer")
+        )
+          fail("report_owner", "Only the run media owner requests media");
       }
       if (c.type === "preview-stop") {
         await stopPreview(r.preview);
@@ -413,6 +423,7 @@ export class Broker {
         await prepareRuntime(
           this.config,
           next.projects[c.project_id!].directory,
+          current(next.projects[c.project_id!]).orchestration?.mode ?? "legacy",
         );
       next.commands[c.command_id] = { hash: digest, result };
       await this.store.commit(next);
@@ -594,7 +605,11 @@ export class Broker {
   async setup(p: Project, r: Run) {
     if (!this.config.allowExecution) return;
     await this.herdr.doctor();
-    await prepareRuntime(this.config, p.directory);
+    await prepareRuntime(
+      this.config,
+      p.directory,
+      current(p).orchestration?.mode ?? "legacy",
+    );
     // Explicit stdio remains supported; otherwise Claude reuses its installed MCP.
     await this.mcp?.connect();
     if (!r.herdr.workspace_id) {
@@ -658,7 +673,9 @@ export class Broker {
         p.directory,
         ".herdr/runs",
         r.run_id,
-        `${a.role}-system.md`,
+        r.orchestration?.mode === "claude-native"
+          ? "pm-instructions.md"
+          : `${a.role}-system.md`,
       );
       await atomic(systemFile, prompt);
       const name = `hp-${hash(a.agent_id).slice(0, 12)}-${a.role}`;
@@ -673,7 +690,9 @@ export class Broker {
           model: a.model,
           effort: a.effort,
           requested_by:
-            a.role === "pm" ? null : (r.orchestration?.requested_by ?? null),
+            a.role !== "pm" && r.orchestration?.mode === "pm-led"
+              ? r.orchestration.requested_by
+              : null,
         },
         () =>
           this.herdr.cli([
@@ -687,7 +706,12 @@ export class Broker {
             "--timeout",
             "30000",
             "--",
-            ...claudeArgs(systemFile, !this.config.mcp),
+            ...claudeArgs(
+              r.orchestration?.mode === "claude-native"
+                ? undefined
+                : systemFile,
+              !this.config.mcp,
+            ),
           ]),
         (v) => {
           if (
@@ -942,7 +966,7 @@ export class Broker {
           )
         )
           continue;
-        const a = r.agents.find((a) => a.role === t.role)!;
+        const a = taskAgent(r, t);
         if (!a.herdr.started) continue;
         if (t.attempt === 0 || t.status === "retrying") t.attempt++;
         t.assignment_id = randomUUID();

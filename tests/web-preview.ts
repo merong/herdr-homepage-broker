@@ -43,16 +43,13 @@ for (const [i, a] of r.agents.entries()) {
     pane_id: `fixture-w1:p${i + 1}`,
     terminal_id: `fixture-t${i + 1}`,
   };
-  a.runtime = { fresh: i !== 2, status: i === 1 ? "working" : "idle" };
-  a.status = i === 1 ? "working" : "waiting";
-  a.waiting_reason =
-    i === 0
-      ? "브랜드 자료 확인 대기"
-      : i === 2
-        ? "디자인 초안 전달 완료"
-        : null;
+  a.runtime = { fresh: true, status: "busy" };
+  a.status = "working";
+  a.waiting_reason = null;
 }
-r.agents[1].task_id = "build";
+r.agents[0].task_id = "build";
+r.tasks[2].result =
+  "[테스트 데이터] PM이 Claude 내부 개발자의 구현 결과를 반영 중입니다.";
 r.questions.push({
   request_id: "fixture-question",
   run_id: r.run_id,

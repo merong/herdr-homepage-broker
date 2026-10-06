@@ -109,12 +109,14 @@ export interface Run {
   slot: boolean;
   resume_required: boolean;
   execution_requested?: boolean;
-  orchestration?: {
-    mode: "pm-led";
-    team_requested: boolean;
-    requested_by: string | null;
-    requested_at: string | null;
-  };
+  orchestration?:
+    | { mode: "claude-native" }
+    | {
+        mode: "pm-led";
+        team_requested: boolean;
+        requested_by: string | null;
+        requested_at: string | null;
+      };
   agents: Agent[];
   tasks: Task[];
   questions: Question[];
