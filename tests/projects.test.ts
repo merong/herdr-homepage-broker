@@ -14,6 +14,7 @@ import {
   sample,
 } from "../src/projects/manage.js";
 import { Broker } from "../src/broker/broker.js";
+import { config, discoverHomepageSkills } from "../src/config.js";
 const exec = promisify(execFile);
 const draft = (id = "sample-company") => ({
   project_id: id,
@@ -28,6 +29,11 @@ test("P01 project initialization is non-destructive, repeatable and preserves re
       first = await initializeProject(f.config, d),
       second = await initializeProject(f.config, d);
     assert.deepEqual(first, second);
+    const runtime = JSON.parse(await fs.readFile(first.runtime.file, "utf8"));
+    assert.equal(runtime.session, "homepage");
+    assert.equal(runtime.model, "claude-opus-5-5");
+    assert.deepEqual(runtime.roles, ["pm", "developer", "designer"]);
+    assert.equal(runtime.higgsfield.transport, "claude-installed");
     assert.equal(
       first.directory,
       path.join(f.config.projectsRoot!, d.project_id),
@@ -310,6 +316,50 @@ test("P07 broker stop confirms owner and shuts down only the idle configured pro
   } finally {
     if (child.exitCode === null) child.kill("SIGTERM");
     await exited;
+    await fs.rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("P08 defaults need no execution switch and discover only the installed homepage skill", async () => {
+  const f = await fixture();
+  try {
+    const claudeRoot = path.join(f.root, "claude");
+    for (const name of ["higgsfield-websites", "unrelated-skill"]) {
+      await fs.mkdir(path.join(claudeRoot, "skills", name), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(claudeRoot, "skills", name, "SKILL.md"),
+        "# skill",
+      );
+    }
+    const found = await discoverHomepageSkills(claudeRoot);
+    assert.deepEqual(found, [
+      path.join(claudeRoot, "skills/higgsfield-websites/SKILL.md"),
+    ]);
+    assert.deepEqual(
+      await discoverHomepageSkills(path.join(f.root, "missing")),
+      [],
+    );
+    const file = path.join(f.root, "minimal-config.json");
+    await fs.writeFile(file, JSON.stringify({ skills: found }));
+    const c = await config(file);
+    assert.equal(c.allowExecution, true);
+    assert.equal(c.autoStart, false);
+    assert.equal(c.mcp, undefined);
+    assert.deepEqual(c.skills, found);
+    await fs.writeFile(
+      file,
+      JSON.stringify({ skills: found, allowExecution: false, autoStart: true }),
+    );
+    const custom = await config(file);
+    assert.equal(
+      custom.allowExecution,
+      false,
+      "explicit operator pause is preserved",
+    );
+    assert.equal(custom.autoStart, true);
+  } finally {
     await fs.rm(f.root, { recursive: true, force: true });
   }
 });

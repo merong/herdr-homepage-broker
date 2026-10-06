@@ -3,6 +3,7 @@ import path from "node:path";
 import { Config, fail } from "../contracts/types.js";
 import { command } from "../contracts/validate.js";
 import { hash, canonical, realDirectory } from "../storage/store.js";
+import { prepareRuntime } from "./runtime.js";
 export const sample = {
   prd: "# 기업 랜딩 페이지 PRD\n\n샘플 회사 Example Studio의 한국어 반응형 홈페이지를 제작한다.\n히어로, 서비스 3개, 회사 소개, 문의 영역을 포함한다.\n이미지와 간단한 CSS 모션을 포함하며 실제 회사 정보나 실적은 임의로 만들지 않는다.\n소스와 localhost 미리보기를 제공하고 사용자 검토 대기 상태로 마친다.\n배포, 결제, 분석 추적, 폼 서버는 제외한다.\n",
   design:
@@ -115,6 +116,7 @@ export async function initializeProject(c: Config, input: any) {
   const request_file = path.join(directory, "homepage-request.json");
   await writeOnce(request_file, JSON.stringify(request, null, 2) + "\n");
   await realDirectory(path.join(directory, "app"));
+  const runtime = await prepareRuntime(c, directory);
   return {
     initialized: true,
     project_id: input.project_id,
@@ -122,6 +124,7 @@ export async function initializeProject(c: Config, input: any) {
     request_file,
     command_id: request.command_id,
     session: "homepage",
+    runtime,
   };
 }
 export async function initializedRequest(c: Config, id: string) {
@@ -190,6 +193,7 @@ export async function projectFiles(p: {
         input_required: meta.input_required,
         reason: meta.reason,
         resume_required: meta.resume_required,
+        execution_requested: meta.execution_requested,
         slot_reserved: meta.slot_reserved,
         inputs: meta.inputs,
         herdr: {

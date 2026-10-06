@@ -44,6 +44,7 @@ import { syncTsk } from "../herdr/tsk.js";
 import { brokerSocket } from "../config.js";
 import { Dashboard } from "../web/server.js";
 import { executionReadiness } from "./execution.js";
+import { prepareRuntime } from "../projects/runtime.js";
 export class Broker {
   store: Store;
   herdr: Herdr;
@@ -77,6 +78,8 @@ export class Broker {
       await this.store.load();
       const s = structuredClone(this.store.state);
       for (const p of Object.values(s.projects)) {
+        if (!terminal.has(current(p).status))
+          await prepareRuntime(this.config, p.directory);
         for (const r of p.runs) {
           for (const a of r.agents) a.runtime.fresh = false;
           for (const op of r.operations)
@@ -226,17 +229,24 @@ export class Broker {
       if (!readiness.ready)
         fail(
           "execution_not_ready",
-          readiness.checks
-            .filter((v) => !v.ok)
-            .map((v) => `${v.label}: ${v.detail}`)
-            .join("\n"),
+          [
+            ...readiness.blockers.map((v) => v.detail),
+            ...readiness.checks
+              .filter((v) => !v.ok)
+              .map((v) => `${v.label}: ${v.detail}`),
+          ].join("\n"),
         );
-      if (!this.mcp)
-        fail("mcp_unconfigured", "Higgsfield MCP 연결이 필요합니다.");
-      await this.mcp.connect();
+      await this.mcp?.connect();
+      await prepareRuntime(
+        this.config,
+        this.store.state.projects[c.project_id!].directory,
+      );
       const next = structuredClone(this.store.state);
       if (c.payload.action === "resume")
         await mutate(next, { ...c, type: "resume", payload: {} }, this.config);
+      const project = next.projects[c.project_id!];
+      current(project).execution_requested = true;
+      project.revision++;
       result = {
         project_id: c.project_id,
         run_id: c.run_id,
@@ -389,6 +399,11 @@ export class Broker {
       // Validate and mutate a clone so a refused command cannot leak partial state changes.
       const next = structuredClone(this.store.state);
       result = await mutate(next, c, this.config);
+      if (["submit", "feedback", "apply-inputs"].includes(c.type))
+        await prepareRuntime(
+          this.config,
+          next.projects[c.project_id!].directory,
+        );
       next.commands[c.command_id] = { hash: digest, result };
       await this.store.commit(next);
     }
@@ -437,6 +452,7 @@ export class Broker {
           status: r.status,
           slot: r.slot,
           resume_required: r.resume_required,
+          execution_requested: !!r.execution_requested,
           reason: r.reason,
           input_required: r.questions.some((q) => q.status !== "answered"),
           input_requests: r.questions,
@@ -559,10 +575,9 @@ export class Broker {
   async setup(p: Project, r: Run) {
     if (!this.config.allowExecution) return;
     await this.herdr.doctor();
-    // The MCP connection must be independently usable by this broker, not merely listed in Claude.
-    if (!this.mcp)
-      fail("mcp_unconfigured", "Higgsfield broker connection not configured");
-    await this.mcp.connect();
+    await prepareRuntime(this.config, p.directory);
+    // Explicit stdio remains supported; otherwise Claude reuses its installed MCP.
+    await this.mcp?.connect();
     if (!r.herdr.workspace_id) {
       const label = `homepage:${p.project_id}:${r.run_id}`;
       await this.operation(
@@ -642,7 +657,7 @@ export class Broker {
             "--timeout",
             "30000",
             "--",
-            ...claudeArgs(prompt),
+            ...claudeArgs(prompt, !this.config.mcp),
           ]),
         (v) => {
           if (
@@ -920,7 +935,12 @@ export class Broker {
     if (this.config.allowExecution) {
       let slots = entries.filter((x) => x.r.slot).length;
       for (const { p, r } of entries
-        .filter((x) => x.r.status === "queued" && !x.r.resume_required)
+        .filter(
+          (x) =>
+            x.r.status === "queued" &&
+            !x.r.resume_required &&
+            (this.config.autoStart || x.r.execution_requested),
+        )
         .sort((a, b) => a.r.queue_seq - b.r.queue_seq)) {
         if (slots >= 2) break;
         r.slot = true;

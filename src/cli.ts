@@ -184,7 +184,11 @@ export async function main(argv = process.argv.slice(2)) {
       node24_verified: process.versions.node.startsWith("24."),
       herdr: host,
       claude,
-      higgsfield: { registration: await detectMcp(), broker: mcp },
+      higgsfield: {
+        transport: c.mcp ? "broker-stdio" : "claude-installed",
+        registration: await detectMcp(),
+        ...(c.mcp ? { broker: mcp } : {}),
+      },
       state_dir: stateDir(c),
       execution_enabled: c.allowExecution,
     });

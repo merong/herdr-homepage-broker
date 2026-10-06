@@ -6,24 +6,26 @@ import { randomUUID } from "node:crypto";
 import { Broker } from "../src/broker/broker.js";
 import { current } from "../src/domain/engine.js";
 import { fixture, FakeHerdr } from "./helpers.js";
-async function setup(ready = true) {
+async function setup(ready: boolean | "native" = true) {
   const f = await fixture();
+  f.config.autoStart = false;
   f.config.web = { enabled: true, port: 0 };
   if (ready) {
     const skill = path.join(f.root, "SKILL.md");
     await fs.writeFile(skill, "# Fixture homepage skill\nLocal source only.");
     f.config.skills = [skill];
     f.config.allowExecution = true;
-    f.config.mcp = {
-      command: process.execPath,
-      args: [path.resolve("tests/fixtures/mcp-server.mjs")],
-      generateTool: "generate",
-      statusTool: "status",
-      jobIdPath: "job_id",
-      statusPath: "status",
-      assetPath: "asset",
-      statusArgument: "job_id",
-    };
+    if (ready !== "native")
+      f.config.mcp = {
+        command: process.execPath,
+        args: [path.resolve("tests/fixtures/mcp-server.mjs")],
+        generateTool: "generate",
+        statusTool: "status",
+        jobIdPath: "job_id",
+        statusPath: "status",
+        assetPath: "asset",
+        statusArgument: "job_id",
+      };
   }
   const h = new FakeHerdr(f.config),
     b = new Broker(f.config, h);
@@ -72,12 +74,12 @@ test("E01 web execution readiness reports disabled configuration and refuses dis
     const check = await f.readiness();
     assert.equal(check.action, "start");
     assert.equal(check.ready, false);
-    for (const code of [
-      "execution_disabled",
-      "skills_unavailable",
-      "mcp_unconfigured",
-    ])
-      assert.ok(check.checks.some((c: any) => c.code === code && !c.ok));
+    assert.deepEqual(
+      check.checks.map((c: any) => c.code),
+      ["documents_ready", "plugin_ready"],
+    );
+    assert.equal(check.checks[0].ok, true);
+    assert.equal(check.checks[1].ok, false);
     assert.equal(JSON.stringify(f.b.store.state), before);
     const response = await f.send(f.input());
     assert.equal(response.status, 409);
@@ -245,6 +247,75 @@ test("E06 MCP tool mismatch refuses a ready-looking request before run mutation"
     assert.equal(JSON.stringify(f.b.store.state), before);
     assert.equal(f.h.calls.length, 0);
     assert.equal(f.b.mcp!.ready, false);
+  } finally {
+    await f.close();
+  }
+});
+
+test("E07 installed Claude MCP needs no broker mapping and only the requested project starts", async () => {
+  const f = await setup("native");
+  try {
+    await f.b.handle(f.submit("B"));
+    await f.b.tick();
+    assert.equal(
+      f.h.calls.length,
+      0,
+      "initialization/submission must not launch models",
+    );
+    const ready = await f.readiness();
+    assert.equal(ready.ready, true);
+    assert.equal(ready.checks.length, 2);
+    assert.equal(f.b.mcp, undefined);
+    assert.equal((await f.send(f.input())).status, 200);
+    const state = await (await fetch(f.url + "/api/projects/A/state")).json();
+    assert.equal(state.files["meta.json"].execution_requested, true);
+    await f.b.tick();
+    await f.b.tick();
+    assert.equal(current(f.b.store.state.projects.B).status, "queued");
+    const starts = f.h.calls.filter(
+      (c) => c[0] === "agent" && c[1] === "start",
+    );
+    assert.equal(starts.length, 3);
+    for (const args of starts) {
+      assert.equal(args.includes("--strict-mcp-config"), false);
+      assert.equal(args.includes("--mcp-config"), false);
+      assert.ok(args.includes("--disable-slash-commands"));
+      assert.equal(args[args.indexOf("--setting-sources") + 1], "");
+      assert.equal(args[args.indexOf("--model") + 1], "claude-opus-5-5");
+      assert.equal(args[args.indexOf("--effort") + 1], "high");
+    }
+    const runtime = JSON.parse(
+      await fs.readFile(
+        path.join(
+          f.b.store.state.projects.A.directory,
+          "homepage-runtime.json",
+        ),
+        "utf8",
+      ),
+    );
+    assert.equal(runtime.higgsfield.transport, "claude-installed");
+    assert.equal(runtime.start_mode, "explicit");
+  } finally {
+    await f.close();
+  }
+});
+
+test("E08 changed documents or unavailable plugin still block the two-check preflight", async () => {
+  const f = await setup("native");
+  try {
+    const doc = current(f.b.store.state.projects.A).inputs.prd.path;
+    await fs.writeFile(doc, "tampered");
+    let ready = await f.readiness();
+    assert.equal(ready.ready, false);
+    assert.equal(ready.checks[0].ok, false);
+    assert.equal(ready.checks[1].ok, true);
+    assert.equal((await f.send(f.input())).status, 409);
+    f.h.doctor = async () => {
+      throw new Error("offline");
+    };
+    ready = await f.readiness();
+    assert.equal(ready.checks[1].ok, false);
+    assert.equal(f.h.calls.length, 0);
   } finally {
     await f.close();
   }

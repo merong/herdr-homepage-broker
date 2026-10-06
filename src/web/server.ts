@@ -272,14 +272,14 @@ export class Dashboard {
         service: "herdr-homepage-broker",
         session: "homepage",
         read_only: !this.config,
-        version: "0.3.0",
+        version: "0.4.0",
       });
       return;
     }
     if (route === "/api/bootstrap") {
       json(200, {
         session: "homepage",
-        version: "0.3.0",
+        version: "0.4.0",
         projects_root: this.config?.projectsRoot ?? null,
         config_file: process.env.HOMEPAGE_CONFIG || defaultConfigFile(),
         can_submit: !!this.config,
@@ -301,7 +301,7 @@ export class Dashboard {
           }
           const s = await this.read();
           return {
-            version: "0.3.0",
+            version: "0.4.0",
             session: "homepage",
             broker: {
               available: true,
@@ -311,18 +311,19 @@ export class Dashboard {
             },
             herdr,
             projects_root: c.projectsRoot,
-            mcp: { configured: !!c.mcp, connection: "not_checked" },
+            mcp: {
+              transport: c.mcp ? "broker-stdio" : "claude-installed",
+              connection: "checked_on_use",
+            },
             skills_count: c.skills.length,
             model: c.model,
             effort: c.effort,
             execution_configured: !!(
               s.execution_enabled &&
               herdr.available &&
-              c.mcp &&
-              c.skills.length > 0 &&
               !s.storage_fault
             ),
-            note: "MCP 실제 연결과 모델 사용 가능성은 doctor에서 별도 확인합니다.",
+            note: "프로젝트 실행 구성은 자동 준비됩니다. 모델 인증·MCP 연결은 실제 도구 사용 시 확인합니다.",
           };
         })();
         const pending = this.checks;

@@ -10,10 +10,14 @@ import { Lines } from "../herdr/transport.js";
 const exec = promisify(execFile);
 export async function detectMcp() {
   try {
-    const { stdout } = await exec("claude", ["mcp", "list"], {
-      timeout: 25000,
-      maxBuffer: 1024 * 1024,
-    });
+    const { stdout } = await exec(
+      "claude",
+      ["--setting-sources", "", "mcp", "list"],
+      {
+        timeout: 25000,
+        maxBuffer: 1024 * 1024,
+      },
+    );
     const lines = stdout.split("\n").filter((s) => /higgs?field/i.test(s));
     return {
       source: "claude mcp list",
@@ -27,7 +31,7 @@ export async function detectMcp() {
           .trim()
           .replace(/[^a-zA-Z0-9 _.-]/g, ""),
       ),
-      note: "Claude registration is separate from a broker MCP connection. No credentials are copied.",
+      note: "Installed Claude MCP is reused by default. No credentials are copied.",
     };
   } catch {
     return {

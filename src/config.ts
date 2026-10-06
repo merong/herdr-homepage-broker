@@ -37,7 +37,8 @@ export async function config(file?: string): Promise<Config> {
     herdrBin: process.env.HERDR_BIN_PATH ?? "herdr",
     socketPath: path.join(herdrRoot, "sessions/homepage/herdr.sock"),
     skills: [],
-    allowExecution: false,
+    allowExecution: true,
+    autoStart: false,
     projectsRoot:
       process.env.HOMEPAGE_PROJECTS_ROOT ??
       path.join(os.homedir(), "herdr-homepages"),
@@ -68,12 +69,13 @@ export async function config(file?: string): Promise<Config> {
     );
   if (
     typeof c.allowExecution !== "boolean" ||
+    typeof c.autoStart !== "boolean" ||
     !Array.isArray(c.skills) ||
     c.skills.some((s) => typeof s !== "string" || !path.isAbsolute(s))
   )
     fail(
       "invalid_config",
-      "allowExecution must be boolean; skills must be absolute paths",
+      "allowExecution and autoStart must be boolean; skills must be absolute paths",
     );
   if (c.mcp) {
     for (const key of [
@@ -107,7 +109,24 @@ export async function config(file?: string): Promise<Config> {
       "session_mismatch",
       "Socket must address sessions/homepage/herdr.sock",
     );
+  if (!c.skills.length) c.skills = await discoverHomepageSkills();
   return c;
+}
+export async function discoverHomepageSkills(
+  claudeRoot = process.env.CLAUDE_CONFIG_DIR ??
+    path.join(os.homedir(), ".claude"),
+) {
+  // Only the homepage skill is selected; unrelated installed skills stay disabled.
+  for (const name of ["higgsfield-websites", "higgsfield-website-builder"]) {
+    const file = path.join(claudeRoot, "skills", name, "SKILL.md");
+    try {
+      if ((await fs.stat(file)).isFile()) {
+        await fs.access(file, fs.constants.R_OK);
+        return [file];
+      }
+    } catch {}
+  }
+  return [];
 }
 export function actionGuard(c: Config) {
   if (

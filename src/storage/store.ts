@@ -212,6 +212,7 @@ export class Store {
         },
         inputs: r.inputs,
         resume_required: r.resume_required,
+        execution_requested: !!r.execution_requested,
         slot_reserved: r.slot,
         operations: r.operations.map(({ request, ...op }) => op),
       },

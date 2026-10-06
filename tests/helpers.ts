@@ -18,6 +18,7 @@ export async function fixture() {
     maxPreviews: 2,
     skills: [],
     allowExecution: false,
+    autoStart: true,
     web: { enabled: false, port: 0 },
   };
   await fs.writeFile(path.join(root, "prd.md"), "회사 홈페이지 요구사항 v1");

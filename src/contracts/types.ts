@@ -107,6 +107,7 @@ export interface Run {
   queue_seq: number;
   slot: boolean;
   resume_required: boolean;
+  execution_requested?: boolean;
   agents: Agent[];
   tasks: Task[];
   questions: Question[];
@@ -160,6 +161,7 @@ export interface Config {
   };
   tsk?: { binary: string; stateDir: string };
   allowExecution: boolean;
+  autoStart?: boolean;
   web?: { enabled: boolean; port: number };
 }
 export class Fault extends Error {

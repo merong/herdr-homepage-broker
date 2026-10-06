@@ -108,9 +108,7 @@ function render() {
   $("revision").textContent = `revision ${snapshot.revision}`;
   const notices = [];
   if (!snapshot.execution_enabled)
-    notices.push(
-      "접수·조회 모드입니다. 실제 제작은 실행 설정을 완료한 후 시작할 수 있습니다.",
-    );
+    notices.push("관리자 설정에 따라 모델 실행이 중지되어 있습니다.");
   if (snapshot.runtime_error)
     notices.push(`Herdr 상태 확인 필요: ${snapshot.runtime_error}`);
   if (snapshot.projection_pending)
@@ -233,8 +231,8 @@ function projectDetail(p) {
         "p",
         "help",
         snapshot.execution_enabled
-          ? "실행 준비를 확인하고 현재 요청을 시작·재개합니다. 실행 슬롯이 없으면 큐에서 기다립니다."
-          : "실행 설정이 꺼져 있습니다. 버튼에서 필요한 설정과 준비 상태를 확인하세요.",
+          ? "문서와 플러그인 준비를 확인하고 시작·재개합니다. 실행 구성은 자동 준비되며 최대 2개까지 진행합니다."
+          : "관리자 설정에서 실행이 중지되어 있습니다.",
       ),
     );
     const start = el(

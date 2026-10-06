@@ -214,10 +214,7 @@
         $("execution-checks").append(row);
       }
       $("execution-note").textContent =
-        `${info.ready ? "기본 준비 확인을 통과했습니다. 요청 전송 시 실제 MCP 연결을 확인합니다." : "표시된 준비 항목을 해결한 뒤 다시 확인하세요. 현재 상태에서는 모델을 시작하지 않습니다."} ${info.waiting_for_slot ? "현재 슬롯이 가득 차 있어 실행 요청 후 큐에서 대기합니다." : ""} ${info.note}`;
-      $("execution-config").textContent =
-        `설정 파일: ${info.config_file}\n필수 항목: allowExecution: true, skills: [승인한 SKILL.md 절대 경로], mcp: 실제 stdio 실행 명령과 도구 매핑`;
-      $("execution-setup").open = !info.ready;
+        `${(info.blockers ?? []).map((b) => b.detail).join(" ")} ${info.waiting_for_slot ? "현재 슬롯이 가득 차 있어 실행 요청 후 큐에서 대기합니다." : ""} ${info.note}`;
     } catch (e) {
       $("execution-checks").textContent =
         `준비 상태를 확인하지 못했습니다: ${e.message}`;
@@ -245,8 +242,6 @@
     $("execution-title").textContent = "실행 준비";
     $("execution-target").textContent = id;
     $("execution-note").textContent = "";
-    $("execution-config").textContent = "";
-    $("execution-setup").open = false;
     $("execution-dialog").showModal();
     if (pendingExecution)
       executionMessage(
@@ -333,7 +328,7 @@
     inspect(
       "실행 환경 상태 체크",
       "/api/checks",
-      "브로커·homepage 세션·실행 설정을 확인합니다. MCP 접속이나 모델 호출은 수행하지 않습니다.",
+      "플러그인 연결과 자동 구성 상태를 확인합니다. 실제 생성이나 모델 호출은 수행하지 않습니다.",
     );
   $("help-open").onclick = () => $("help-dialog").showModal();
   function help() {
@@ -360,7 +355,7 @@
     };
     section(
       "1. 프로젝트 초기화와 샘플 요청",
-      "제작 요청 → 샘플 요청 채우기 → 문서와 경로 검토 → 초기화만 또는 초기화 후 전송. 초기화는 새 폴더와 문서·요청 JSON을 만들며 기존 프로젝트를 삭제하지 않습니다. 웹 버튼은 broker CLI로 접수하고, 스케줄러가 Herdr CLI의 homepage 세션에서 실행합니다.",
+      "제작 요청 → 샘플 요청 채우기 → 문서와 경로 검토 → 초기화만 또는 초기화 후 전송. 초기화는 새 폴더와 문서·요청 JSON, 실행 설정을 자동 생성합니다. homepage 세션, PM/개발자/디자이너, Opus 5.5 high, 설치된 홈페이지 스킬과 Claude MCP가 연결됩니다. 웹 버튼은 broker CLI로 접수하고, 스케줄러가 Herdr CLI의 homepage 세션에서 실행합니다.",
     );
     section(
       "2. 프로젝트 경로와 지속 설정",
@@ -380,7 +375,7 @@
     );
     section(
       "4. 상태 체크와 실행 전제",
-      "프로젝트 상세의 제작 시작 또는 작업 재개 버튼에서 실행 준비를 확인하고 요청합니다. 실행 허용·스킬·MCP·문서·homepage 세션이 준비되지 않으면 조치할 항목이 표시됩니다. 설정이 준비되면 CLI를 통해 현재 run에 요청을 전달하며, 슬롯이 없으면 큐에서 대기합니다. allowExecution=false면 접수만 수행합니다. Claude에 설치된 MCP와 브로커 연결은 별도입니다.",
+      "제작 시작 또는 작업 재개에서 문서 준비와 플러그인 준비 두 항목만 확인합니다. 실행 구성은 자동 준비되며 설치된 Claude의 Higgsfield MCP를 그대로 사용합니다. 시작한 프로젝트만 실행하고 최대 2개를 넘으면 대기합니다. 별도 stdio MCP 설정은 선택 사항입니다. 실제 인증 오류나 미응답 질문은 작업 상태에 표시됩니다.",
     );
     section(
       "5. 공개 GitHub에서 플러그인 설치",
@@ -389,7 +384,7 @@
     );
     section(
       "6. 플러그인 시작과 웹 UI",
-      "homepage 작업공간 안에서 실행하세요. 기본 웹 주소는 http://127.0.0.1:7318입니다. 시작만으로 실행 설정을 자동 활성화하지 않습니다.",
+      "homepage 작업공간 안에서 실행하세요. 기본 웹 주소는 http://127.0.0.1:7318입니다. 브로커 시작 시 기존 프로젝트의 실행 구성도 자동 준비합니다. 제작은 프로젝트에서 시작·재개해야 진행됩니다.",
       "herdr --session homepage plugin action invoke start --plugin herdr-homepage-broker\nherdr --session homepage plugin action invoke open-web --plugin herdr-homepage-broker\nherdr --session homepage plugin action invoke web-status --plugin herdr-homepage-broker",
     );
     section(
@@ -399,7 +394,7 @@
     );
     section(
       "8. Herdr 자체 업데이트와 문제 해결",
-      "플러그인 업데이트와 Herdr 프로그램 업데이트는 별도입니다. Herdr 자체 업데이트가 필요할 때만 herdr update를 사용하세요. stop은 브로커 종료 명령입니다. ENOENT / broker.sock이면 start 액션으로 다시 시작하세요. 보드의 r은 프로젝트 재개이며 모델 실행 설정을 켜지 않습니다. 포트 충돌은 web.port를 바꾸고 브로커를 재시작합니다. JSON 불일치는 잠시 후 재조회합니다. 기존 프로젝트 파일·상태 JSON을 직접 삭제하여 초기화하지 마세요.",
+      "플러그인 업데이트와 Herdr 프로그램 업데이트는 별도입니다. Herdr 자체 업데이트가 필요할 때만 herdr update를 사용하세요. stop은 브로커 종료 명령입니다. ENOENT / broker.sock이면 start 액션으로 다시 시작하세요. 보드의 r은 프로젝트 재개입니다. 포트 충돌은 web.port를 바꾸고 브로커를 재시작합니다. JSON 불일치는 잠시 후 재조회합니다. 기존 프로젝트 파일·상태 JSON을 직접 삭제하여 초기화하지 마세요.",
       "herdr --version\nherdr --session homepage plugin list --json\nherdr --session homepage plugin log list --plugin herdr-homepage-broker",
     );
     const a = node("a", "GitHub 소스와 설치 문서 ↗", "button");

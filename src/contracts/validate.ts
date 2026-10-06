@@ -181,7 +181,9 @@ export function checkpoint(value: any): Checkpoint {
       if (
         !statuses.includes(r.status) ||
         !Number.isSafeInteger(p.revision) ||
-        typeof r.resume_required !== "boolean"
+        typeof r.resume_required !== "boolean" ||
+        (r.execution_requested !== undefined &&
+          typeof r.execution_requested !== "boolean")
       )
         fail("invalid_checkpoint", "Invalid status/revision");
       if (r.run_id === p.current_run_id && r.slot) slots++;
