@@ -448,6 +448,7 @@ export async function mutate(
     r.resume_required = false;
     r.slot = false;
     r.status = "queued";
+    delete r.reason;
     r.queue_seq = ++s.queue_seq;
     return { status: r.status };
   }

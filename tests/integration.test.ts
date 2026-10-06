@@ -112,6 +112,13 @@ test("T09 restart preserves requests but requires explicit resume; republishes m
     );
     await next.handle(cmd("resume", next.store.state.projects.A));
     assert.equal(current(next.store.state.projects.A).status, "queued");
+    assert.equal(next.status().projects[0].resume_required, false);
+    assert.equal(next.status().projects[0].reason, undefined);
+    const meta = JSON.parse(
+      await fs.readFile(path.join(p.directory, "meta.json"), "utf8"),
+    );
+    assert.equal(meta.resume_required, false);
+    assert.equal(meta.reason, null);
     await next.close();
   } finally {
     await fs.rm(f.root, { recursive: true, force: true });
