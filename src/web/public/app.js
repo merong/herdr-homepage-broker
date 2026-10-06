@@ -19,6 +19,7 @@ const names = {
   stopped: "정지",
   unknown: "확인 필요",
   idle: "유휴",
+  done: "턴 완료",
   busy: "작업 중",
   blocked: "입력 필요",
   open: "답변 대기",
@@ -174,6 +175,42 @@ function render() {
       .find((n) => n.dataset.focus === focusKey)
       ?.focus({ preventScroll: true });
 }
+function activeProject(p) {
+  return ["starting", "running", "retrying", "cancelling"].includes(p.status);
+}
+function activity(p) {
+  if (p.status === "queued")
+    return p.execution_requested
+      ? "시작 요청 접수됨 · 실행 슬롯과 큐 순서를 기다립니다."
+      : "큐에 접수됨 · 제작 시작 버튼을 누르면 실행됩니다.";
+  if (p.status === "waiting_input")
+    return "사용자 답변을 기다립니다. 아래 입력 요청을 확인하세요.";
+  if (p.status === "paused")
+    return "작업이 일시 정지되었습니다. 상태 확인 후 재개할 수 있습니다.";
+  if (p.status === "review_pending")
+    return p.preview.status === "ready"
+      ? "제작 완료 · 소스와 localhost 미리보기를 검토할 수 있습니다."
+      : "제작 완료 · 미리보기 상태를 확인하고 있습니다.";
+  const operations = (p.active_operations ?? []).map(
+    (o) =>
+      ({
+        "workspace.create": "Herdr 프로젝트 작업공간 생성 중",
+        "pane.split": "에이전트 pane 준비 중",
+        "agent.start": "Claude 에이전트 시작 중",
+        "agent.prompt": "담당 에이전트에 작업 전달 중",
+        "media.generate": "이미지 생성 요청 전송 중",
+      })[o.kind] ?? `Herdr 요청 처리 중: ${o.kind}`,
+  );
+  if (operations.length) return operations.join(" · ");
+  const tasks = p.tasks.filter((t) => t.status === "running");
+  if (tasks.length)
+    return tasks.map((t) => `${roles[t.role]} · ${t.title}`).join(" / ");
+  return p.status === "starting"
+    ? "PM 오케스트레이터와 실행 환경을 준비합니다."
+    : activeProject(p)
+      ? "다음 작업 배정 또는 에이전트 보고를 기다립니다."
+      : `현재 상태: ${names[p.status] ?? p.status}`;
+}
 function projectDetail(p) {
   const root = el("div");
   const header = el("div", "detail-top"),
@@ -267,6 +304,16 @@ function projectDetail(p) {
   progress.value = done;
   progress.setAttribute("aria-label", "완료한 작업 수");
   root.append(ph, progress);
+  const activityBox = el(
+    "div",
+    `activity${activeProject(p) ? " is-active" : ""}`,
+  );
+  activityBox.setAttribute("role", "status");
+  activityBox.append(el("span", activeProject(p) ? "spinner" : "activity-dot"));
+  const activityText = el("div");
+  activityText.append(el("strong", "", "현재 진행"), el("p", "", activity(p)));
+  activityBox.append(activityText);
+  root.append(activityBox);
   if (p.reason || p.resume_required || p.unknown_operations.length) {
     const info = el("p", "notice");
     info.textContent = [
@@ -293,7 +340,10 @@ function projectDetail(p) {
     );
   const agents = el("div", "agents");
   for (const a of p.agents) {
-    const card = el("article", "agent"),
+    const card = el(
+        "article",
+        `agent${a.runtime.fresh && a.runtime.status === "busy" && activeProject(p) ? " is-active" : ""}`,
+      ),
       top = el("div", "agent-top");
     top.append(
       el("span", `avatar ${a.role}`, initials[a.role] ?? "—"),
@@ -321,6 +371,14 @@ function projectDetail(p) {
         ),
       );
     if (task) card.append(el("p", "task-name", task.title));
+    if (a.pane_id)
+      card.append(
+        el(
+          "p",
+          "mono",
+          `Herdr ${a.pane_id}${a.runtime.interactive_ready ? " · 입력 가능" : ""}`,
+        ),
+      );
     agents.append(card);
   }
   root.append(agents);
@@ -351,7 +409,8 @@ function projectDetail(p) {
   root.append(section("작업 목록", `${p.tasks.length} TASKS`));
   const tasks = el("div", "tasks");
   for (const t of p.tasks) {
-    const row = el("div", "task"),
+    const running = t.status === "running" && activeProject(p);
+    const row = el("div", `task${running ? " is-active" : ""}`),
       text = el("div");
     text.append(
       el("div", "task-title", t.title),
@@ -363,12 +422,34 @@ function projectDetail(p) {
     );
     if (t.depends_on.length)
       text.append(el("small", "", `선행 작업: ${t.depends_on.join(", ")}`));
-    if (t.result) text.append(el("small", "", t.result));
+    if (t.result) text.append(el("small", "task-report", t.result));
+    if (t.updated_at)
+      text.append(
+        el(
+          "small",
+          "",
+          `최근 보고 ${new Date(t.updated_at).toLocaleTimeString("ko-KR")}`,
+        ),
+      );
+    if (t.status === "pending")
+      text.append(
+        el(
+          "small",
+          "",
+          t.depends_on.some(
+            (id) =>
+              p.tasks.find((task) => task.task_id === id)?.status !==
+              "completed",
+          )
+            ? "선행 작업 완료 대기"
+            : "담당 에이전트 배정 대기",
+        ),
+      );
     row.append(
       el(
         "span",
-        "task-mark",
-        t.status === "completed" ? "✓" : t.status === "running" ? "◉" : "○",
+        running ? "task-mark spinner" : "task-mark",
+        running ? "" : t.status === "completed" ? "✓" : "○",
       ),
       text,
       badge(t.status),
@@ -398,11 +479,69 @@ function projectDetail(p) {
       roles[a.role],
       `pane ${a.pane_id ?? "배정 전"} / terminal ${a.terminal_id ?? "배정 전"}`,
     ]),
-  ])
-    dl.append(el("dt", "", key), el("dd", "", value));
+  ]) {
+    const dd = el("dd", "", value);
+    if (key === "상태 revision") dd.dataset.projectRevision = p.project_id;
+    dl.append(el("dt", "", key), dd);
+  }
   details.append(summary, dl);
   root.append(details);
   return root;
+}
+function acceptSnapshot(data, transport) {
+  if (data.session !== "homepage" || !Array.isArray(data.projects))
+    throw new Error("세션 불일치");
+  if (snapshot && data.revision < snapshot.revision) return;
+  const next = JSON.stringify({
+    ...data,
+    observed_at: undefined,
+    revision: undefined,
+    projects: data.projects.map((p) => ({
+      ...p,
+      revision: undefined,
+      agents: p.agents.map((a) => ({
+        ...a,
+        runtime: { ...a.runtime, observed_at: undefined },
+      })),
+    })),
+  });
+  snapshot = data;
+  $("revision").textContent = `revision ${data.revision}`;
+  document.querySelectorAll("[data-project-revision]").forEach((node) => {
+    const project = data.projects.find(
+      (p) => p.project_id === node.dataset.projectRevision,
+    );
+    if (project) node.textContent = project.revision;
+  });
+  lastSuccess = Date.now();
+  offline = false;
+  document
+    .querySelectorAll("[data-execution-control]")
+    .forEach((b) => (b.disabled = false));
+  document.body.dataset.offline = "false";
+  $("connection").textContent =
+    transport === "stream" ? "● 실시간 연결됨" : "● 자동 갱신 중";
+  $("connection").className = "live";
+  $("updated").textContent =
+    `마지막 수신 ${new Date(data.observed_at).toLocaleTimeString("ko-KR")}`;
+  $("error").hidden = true;
+  if (next !== signature) {
+    signature = next;
+    render();
+  }
+}
+function markOffline() {
+  offline = true;
+  document
+    .querySelectorAll("[data-execution-control]")
+    .forEach((b) => (b.disabled = true));
+  document.body.dataset.offline = "true";
+  $("connection").textContent = "● 상태 갱신 지연";
+  $("connection").className = "offline";
+  $("error").hidden = false;
+  $("error").textContent = snapshot
+    ? "최신 상태를 가져오지 못했습니다. 아래는 마지막 수신 기록이며 자동으로 다시 연결합니다."
+    : "브로커 연결을 기다리고 있습니다. 자동으로 다시 연결합니다.";
 }
 async function refresh() {
   if (busy) return;
@@ -417,46 +556,9 @@ async function refresh() {
     const data = await res.json();
     if (data.session !== "homepage" || !Array.isArray(data.projects))
       throw new Error("세션 불일치");
-    const next = JSON.stringify({ ...data, observed_at: undefined });
-    snapshot = data;
-    lastSuccess = Date.now();
-    offline = false;
-    document
-      .querySelectorAll("[data-execution-control]")
-      .forEach((b) => (b.disabled = false));
-    document.body.dataset.offline = "false";
-    $("connection").textContent = "● 브로커 연결됨";
-    $("connection").className = "live";
-    $("updated").textContent =
-      `마지막 수신 ${new Date(data.observed_at).toLocaleTimeString("ko-KR")}`;
-    $("error").hidden = true;
-    if (next !== signature) {
-      signature = next;
-      render();
-    }
+    acceptSnapshot(data, "poll");
   } catch {
-    offline = true;
-    document
-      .querySelectorAll("[data-execution-control]")
-      .forEach((b) => (b.disabled = true));
-    document.body.dataset.offline = "true";
-    $("connection").textContent = "● 상태 갱신 지연";
-    $("connection").className = "offline";
-    $("error").hidden = false;
-    $("error").textContent = snapshot
-      ? "최신 상태를 가져오지 못했습니다. 아래는 마지막 수신 기록이며 자동으로 다시 연결합니다."
-      : "브로커 상태를 가져오지 못했습니다. 브로커 실행 상태를 확인하세요. 자동으로 다시 연결합니다.";
-    if (!snapshot) {
-      $("detail").replaceChildren(
-        empty(
-          "상태를 확인할 수 없습니다",
-          "브로커가 응답하면 프로젝트 목록이 자동으로 표시됩니다.",
-        ),
-      );
-      $("project-list").replaceChildren(
-        el("p", "empty-list", "연결을 기다리고 있습니다."),
-      );
-    }
+    markOffline();
   } finally {
     busy = false;
     $("refresh").disabled = false;
@@ -478,5 +580,7 @@ document.addEventListener("visibilitychange", () => {
 });
 void refresh();
 setInterval(() => {
-  if (!document.hidden) void refresh();
+  if (!document.hidden && !window.homepageStreamFresh?.()) void refresh();
+  if (!document.hidden && lastSuccess && Date.now() - lastSuccess > 10000)
+    markOffline();
 }, 2000);

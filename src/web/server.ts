@@ -8,6 +8,8 @@ import { Herdr } from "../herdr/transport.js";
 import { defaultConfigFile } from "../config.js";
 import type { AddressInfo } from "node:net";
 import type { Broker } from "../broker/broker.js";
+import { McpHealth } from "../media/health.js";
+import { VERSION } from "../version.js";
 
 type Snapshot = ReturnType<Broker["status"]>;
 
@@ -32,6 +34,7 @@ export function webSnapshot(s: Snapshot) {
       status: p.status,
       slot: p.slot,
       resume_required: p.resume_required,
+      execution_requested: p.execution_requested,
       reason: p.reason ?? null,
       workspace_id: p.herdr.workspace_id,
       orchestration: p.orchestration ?? null,
@@ -55,6 +58,7 @@ export function webSnapshot(s: Snapshot) {
           status: a.runtime.status ?? "unknown",
           fresh: a.runtime.fresh === true,
           observed_at: a.runtime.observed_at ?? null,
+          interactive_ready: a.runtime.interactive_ready === true,
         },
       })),
       tasks: p.tasks.map((t) => ({
@@ -66,6 +70,7 @@ export function webSnapshot(s: Snapshot) {
         depends_on: t.depends_on,
         writes: t.writes,
         result: t.result ?? null,
+        updated_at: t.updated_at ?? null,
       })),
       input_requests: p.input_requests.map((q) => ({
         request_id: q.request_id,
@@ -78,6 +83,9 @@ export function webSnapshot(s: Snapshot) {
       unknown_operations: p.operations
         .filter((o) => o.status === "unknown")
         .map((o) => ({ operation_id: o.operation_id, kind: o.kind })),
+      active_operations: p.operations
+        .filter((o) => ["prepared", "dispatching"].includes(o.status))
+        .map((o) => ({ kind: o.kind, created_at: o.created_at })),
     })),
   };
 }
@@ -105,10 +113,56 @@ export class Dashboard {
   url: string | null = null;
   private csrf = randomBytes(32).toString("hex");
   private checks?: Promise<any>;
+  private streams = new Set<http.ServerResponse>();
+  private streamTimer?: NodeJS.Timeout;
+  private broadcasting = false;
+  private mcp: McpHealth;
   constructor(
     private read: () => Promise<Snapshot>,
     private config?: Config,
-  ) {}
+    mcp?: McpHealth,
+  ) {
+    this.mcp = mcp ?? new McpHealth(config?.mcp);
+  }
+
+  private async snapshot() {
+    if (!this.pending) {
+      const pending = this.read().then(webSnapshot);
+      this.pending = pending;
+      void pending
+        .finally(() => {
+          if (this.pending === pending) this.pending = undefined;
+        })
+        .catch(() => {});
+    }
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        this.pending,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("busy")), 5000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async broadcast() {
+    if (this.broadcasting || !this.streams.size) return;
+    this.broadcasting = true;
+    let event;
+    try {
+      event = `event: status\ndata: ${JSON.stringify(await this.snapshot())}\n\n`;
+    } catch {
+      event = 'event: unavailable\ndata: {"error":"status_unavailable"}\n\n';
+    }
+    for (const res of this.streams) {
+      if (res.writableLength > 256 * 1024) res.destroy();
+      else res.write(event);
+    }
+    this.broadcasting = false;
+  }
 
   async start(port: number) {
     const assets = new Map<string, { body: Buffer; type: string }>();
@@ -116,6 +170,7 @@ export class Dashboard {
       ["/", "index.html", "text/html; charset=utf-8"],
       ["/app.js", "app.js", "text/javascript; charset=utf-8"],
       ["/actions.js", "actions.js", "text/javascript; charset=utf-8"],
+      ["/live.js", "live.js", "text/javascript; charset=utf-8"],
       ["/style.css", "style.css", "text/css; charset=utf-8"],
     ])
       assets.set(route, {
@@ -273,14 +328,14 @@ export class Dashboard {
         service: "herdr-homepage-broker",
         session: "homepage",
         read_only: !this.config,
-        version: "0.4.1",
+        version: VERSION,
       });
       return;
     }
     if (route === "/api/bootstrap") {
       json(200, {
         session: "homepage",
-        version: "0.4.1",
+        version: VERSION,
         projects_root: this.config?.projectsRoot ?? null,
         config_file: process.env.HOMEPAGE_CONFIG || defaultConfigFile(),
         can_submit: !!this.config,
@@ -288,6 +343,44 @@ export class Dashboard {
         sample,
         repository: "merong/herdr-homepage-broker",
       });
+      return;
+    }
+    if (route === "/api/mcp" || route === "/api/mcp?refresh=1") {
+      json(
+        200,
+        this.mcp.snapshot(req.method === "GET" && route.endsWith("refresh=1")),
+      );
+      return;
+    }
+    if (route === "/api/events") {
+      if (this.streams.size >= 20) {
+        json(503, { error: "stream_limit" });
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      if (req.method === "HEAD") {
+        res.end();
+        return;
+      }
+      res.flushHeaders();
+      res.write("retry: 2000\n\n");
+      this.streams.add(res);
+      res.on("close", () => {
+        this.streams.delete(res);
+        if (!this.streams.size) {
+          clearInterval(this.streamTimer);
+          this.streamTimer = undefined;
+        }
+      });
+      if (!this.streamTimer)
+        this.streamTimer = setInterval(() => {
+          void this.broadcast();
+        }, 1000);
+      void this.broadcast();
       return;
     }
     if (route === "/api/checks" && this.config) {
@@ -302,7 +395,7 @@ export class Dashboard {
           }
           const s = await this.read();
           return {
-            version: "0.4.1",
+            version: VERSION,
             session: "homepage",
             broker: {
               available: true,
@@ -312,10 +405,7 @@ export class Dashboard {
             },
             herdr,
             projects_root: c.projectsRoot,
-            mcp: {
-              transport: c.mcp ? "broker-stdio" : "claude-installed",
-              connection: "checked_on_use",
-            },
+            mcp: this.mcp.snapshot(),
             skills_count: c.skills.length,
             model: c.model,
             effort: c.effort,
@@ -324,7 +414,7 @@ export class Dashboard {
               herdr.available &&
               !s.storage_fault
             ),
-            note: "프로젝트 실행 구성은 자동 준비됩니다. 모델 인증·MCP 연결은 실제 도구 사용 시 확인합니다.",
+            note: "MCP 검사는 메인 화면에서 자동 갱신됩니다. 접속 검사로 실제 생성 성공을 보장하지 않습니다.",
           };
         })();
         const pending = this.checks;
@@ -386,33 +476,20 @@ export class Dashboard {
     }
     // Coalesce readers while the broker is doing an external operation. A hung
     // operation must not accumulate a new queued read on every browser poll.
-    if (!this.pending) {
-      const pending = this.read().then(webSnapshot);
-      this.pending = pending;
-      void pending
-        .finally(() => {
-          if (this.pending === pending) this.pending = undefined;
-        })
-        .catch(() => {});
-    }
-    let timer: NodeJS.Timeout | undefined;
     try {
-      const data = await Promise.race([
-        this.pending,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("busy")), 5000);
-        }),
-      ]);
+      const data = await this.snapshot();
       json(200, data);
     } catch {
       json(503, { error: "status_unavailable" });
-    } finally {
-      clearTimeout(timer);
     }
   }
 
   async close() {
     this.url = null;
+    this.mcp.close();
+    clearInterval(this.streamTimer);
+    for (const res of this.streams) res.end();
+    this.streams.clear();
     if (!this.server?.listening) return;
     this.server.closeAllConnections();
     await new Promise<void>((resolve) => this.server!.close(() => resolve()));

@@ -355,7 +355,7 @@
     };
     section(
       "1. 프로젝트 초기화와 샘플 요청",
-      "제작 요청 → 샘플 요청 채우기 → 문서와 경로 검토 → 초기화만 또는 초기화 후 전송. 초기화는 새 폴더와 문서·요청 JSON, 실행 설정을 자동 생성합니다. homepage 세션, PM/개발자/디자이너, Opus 5.5 high, 설치된 홈페이지 스킬과 Claude MCP가 연결됩니다. 웹 버튼은 broker CLI로 접수하고, 스케줄러가 Herdr CLI의 homepage 세션에서 실행합니다.",
+      "제작 요청 → 샘플 요청 채우기 → 문서와 경로 검토 → 초기화만 또는 초기화 후 전송. 샘플 문서는 Higgsfield 신규 이미지 1장 생성과 job 기록·화면 적용을 필수로 요구합니다. 초기화는 새 폴더와 문서·요청 JSON, 실행 설정을 자동 생성합니다. homepage 세션, PM/개발자/디자이너, Opus 5.5 high, 설치된 홈페이지 스킬과 Claude MCP가 연결됩니다. 웹 버튼은 broker CLI로 접수하고, 스케줄러가 Herdr CLI의 homepage 세션에서 실행합니다.",
     );
     section(
       "2. 프로젝트 경로와 지속 설정",
@@ -375,11 +375,11 @@
     );
     section(
       "3. 상태와 사용자 입력",
-      "진행 상태는 broker-checkpoint.json을 기반으로 갱신합니다. 프로젝트의 JSON 상태 확인은 meta/task/agents 파일의 revision·run 일치를 검사합니다. queued=접수 대기, running=제작 중, waiting_input=입력 필요, paused=명시적 재개 필요, review_pending=사용자 검토 대기입니다. 에이전트 유휴는 제작 완료와 다릅니다. 질문 답변은 answer --file, 문서 갱신은 apply-inputs로 전달합니다.",
+      "진행 상태는 broker-checkpoint.json을 기반으로 실시간 수신합니다. 연결 지연 시 2초 간격 조회로 전환합니다. 현재 진행에는 Herdr 실행 상태와 담당 작업, 최근 작업 보고가 표시되며 실제 실행 중인 태스크에만 로딩 효과가 적용됩니다. 프로젝트의 JSON 상태 확인은 meta/task/agents 파일의 revision·run 일치를 검사합니다. queued=접수 대기, running=제작 중, waiting_input=입력 필요, paused=명시적 재개 필요, review_pending=사용자 검토 대기입니다. 에이전트 유휴는 제작 완료와 다릅니다. 질문 답변은 answer --file, 문서 갱신은 apply-inputs로 전달합니다.",
     );
     section(
       "4. 상태 체크와 실행 전제",
-      "제작 시작 또는 작업 재개에서 문서 준비와 플러그인 준비 두 항목만 확인합니다. 실행 구성은 자동 준비되며 설치된 Claude의 Higgsfield MCP를 그대로 사용합니다. 시작한 프로젝트만 실행하고 최대 2개를 넘으면 대기합니다. 별도 stdio MCP 설정은 선택 사항입니다. 실제 인증 오류나 미응답 질문은 작업 상태에 표시됩니다.",
+      "제작 시작 또는 작업 재개에서 문서 준비와 플러그인 준비 두 항목만 확인합니다. 실행 구성은 자동 준비되며 설치된 Claude의 Higgsfield MCP를 그대로 사용합니다. 시작한 프로젝트만 실행하고 최대 2개를 넘으면 대기합니다. 별도 stdio MCP 설정은 선택 사항입니다. 메인 화면의 MCP 서버 패널에서 설치된 서버 목록과 Higgsfield 연결을 자동 검사합니다. 최근 결과를 60초간 공유하고 다시 확인 버튼으로 갱신합니다. 연결됨은 접속 검사 결과이며, 각 에이전트의 도구 로딩과 실제 이미지 생성 완료는 작업 보고로 확인합니다. 실제 인증 오류나 미응답 질문은 작업 상태에 표시됩니다.",
     );
     section(
       "5. 공개 GitHub에서 플러그인 설치",

@@ -17,7 +17,7 @@ Herdr가 없다면 [공식 설치 안내](https://herdr.dev/)를 따릅니다. `
 ## GitHub 릴리스 설치
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.5.0 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.6.0 --yes
 ```
 
 설치가 의존성 설치와 TypeScript·정적 UI 빌드를 실행합니다. `dist`와 `node_modules`는 Git에 포함하지 않습니다. `--ref`를 고정하면 재현 가능한 버전을 설치할 수 있습니다.
@@ -67,11 +67,11 @@ Herdr 0.9.3에는 `plugin update`가 없습니다. 원하는 Git 태그로 `plug
 
 ```sh
 herdr --session homepage plugin action invoke stop --plugin herdr-homepage-broker
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.5.0 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.6.0 --yes
 herdr --session homepage plugin action invoke start --plugin herdr-homepage-broker
 ```
 
-`v0.5.0`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
+`v0.6.0`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
 
 Herdr 프로그램 자체의 업데이트는 별도 `herdr update` 명령입니다. 플러그인 릴리스 설치를 위해 Herdr 전체 세션을 강제 종료하지 않습니다.
 

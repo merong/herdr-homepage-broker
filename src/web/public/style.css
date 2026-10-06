@@ -1140,3 +1140,158 @@ dialog::backdrop {
     grid-template-columns: 50px 1fr;
   }
 }
+
+/* Motion always represents a real check or an active task, never a percentage. */
+.mcp-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 20px 24px;
+  margin: 0 0 22px;
+}
+.mcp-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.mcp-heading .eyebrow {
+  margin: 0 0 6px;
+}
+.mcp-heading h2 {
+  font-size: 15px;
+  margin: 0;
+}
+.mcp-heading h2 span {
+  margin-left: 10px;
+}
+.mcp-panel details {
+  margin: 12px 0;
+}
+.mcp-server {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(100px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.mcp-server > span:not(.badge) {
+  color: var(--muted);
+}
+.required-server {
+  background: #f0f6ee;
+  border-radius: 7px;
+}
+.activity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  background: #f4f6f0;
+  border-radius: 9px;
+  font-size: 11px;
+}
+.activity p {
+  margin: 5px 0 0;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  flex: none;
+}
+.spinner {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 2px solid #d5dfce;
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: hp-spin 1s linear infinite;
+}
+.task .spinner {
+  margin-top: 3px;
+}
+.is-active,
+.skeleton {
+  position: relative;
+  overflow: hidden;
+}
+.is-active::after,
+.skeleton::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 20%,
+    #dbe8d33b 45%,
+    transparent 70%
+  );
+  transform: translateX(-100%);
+  animation: hp-shimmer 2.6s ease-in-out infinite;
+}
+.task.is-active {
+  border-left: 2px solid #8da781;
+  padding-left: 10px;
+}
+.task-report {
+  white-space: pre-wrap;
+}
+body[data-offline="true"] .spinner,
+body[data-offline="true"] .is-active::after {
+  animation-play-state: paused;
+}
+@keyframes hp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes hp-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .is-active::after,
+  .skeleton::after {
+    animation: none;
+  }
+  .is-active::after,
+  .skeleton::after {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .mcp-panel {
+    padding: 16px;
+  }
+  .mcp-heading {
+    align-items: start;
+  }
+  .mcp-heading h2 span {
+    display: table;
+    margin: 7px 0 0;
+  }
+  .mcp-server {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .mcp-server > span:not(.badge) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .mcp-server .badge {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}

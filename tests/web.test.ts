@@ -311,3 +311,130 @@ test("W07 CLI returns actual web URL and plugin action retains homepage guard", 
     await f.close();
   }
 });
+
+test(
+  "W08 SSE receives committed progress and Herdr state, rejects foreign origin, reconnects and closes",
+  { timeout: 10000 },
+  async () => {
+    const f = await setup();
+    const abort = new AbortController();
+    try {
+      assert.equal(
+        (
+          await httpRequest(f.url + "/api/events", {
+            Origin: "https://foreign.test",
+          })
+        ).status,
+        403,
+      );
+      const res = await fetch(f.url + "/api/events", { signal: abort.signal });
+      assert.match(res.headers.get("content-type")!, /text\/event-stream/);
+      const reader = res.body!.getReader();
+      let buffer = "";
+      async function nextStatus() {
+        while (true) {
+          const boundary = buffer.indexOf("\n\n");
+          if (boundary !== -1) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            if (frame.startsWith("event: status\n"))
+              return JSON.parse(frame.split("\ndata: ")[1]);
+            continue;
+          }
+          const next = await reader.read();
+          assert.equal(next.done, false);
+          buffer += new TextDecoder().decode(next.value);
+        }
+      }
+      assert.equal((await nextStatus()).projects.length, 0);
+      await f.b.handle(f.submit("stream-project"));
+      const p = f.b.store.state.projects["stream-project"],
+        r = current(p);
+      r.status = "running";
+      r.execution_requested = true;
+      r.tasks[0].status = "running";
+      r.tasks[0].result = "히어로 생성 요청 접수 · job-123";
+      r.tasks[0].updated_at = new Date().toISOString();
+      r.agents[0].runtime = {
+        status: "busy",
+        fresh: true,
+        interactive_ready: false,
+      };
+      r.agents[0].token = "PRIVATE_STREAM_TOKEN";
+      r.operations.push({
+        operation_id: "op-stream",
+        kind: "agent.start",
+        status: "dispatching",
+        request: { token: "PRIVATE_REQUEST" },
+        created_at: new Date().toISOString(),
+      });
+      await f.b.save(p);
+      let data;
+      do {
+        data = await nextStatus();
+      } while (data.revision < f.b.store.state.revision);
+      assert.equal(
+        data.projects[0].tasks[0].result,
+        "히어로 생성 요청 접수 · job-123",
+      );
+      assert.equal(data.projects[0].agents[0].runtime.status, "busy");
+      assert.equal(data.projects[0].execution_requested, true);
+      assert.deepEqual(
+        data.projects[0].active_operations.map((o: any) => o.kind),
+        ["agent.start"],
+      );
+      assert.doesNotMatch(JSON.stringify(data), /PRIVATE_/);
+      abort.abort();
+      const again = await fetch(f.url + "/api/events");
+      const againReader = again.body!.getReader();
+      assert.equal((await againReader.read()).done, false);
+      await f.b.dashboard!.close();
+      while (!(await againReader.read()).done) {
+        /* Drain final frame. */
+      }
+    } finally {
+      abort.abort();
+      await f.close();
+    }
+  },
+);
+
+test("W09 MCP endpoint returns checking promptly and shares checks across readers", async () => {
+  const { McpHealth } = await import("../src/media/health.js");
+  const f = await setup();
+  let finish!: (value: any) => void,
+    calls = 0;
+  const health = new McpHealth(undefined, () => {
+    calls++;
+    return new Promise((r) => {
+      finish = r;
+    });
+  });
+  const dashboard = new Dashboard(async () => f.b.status(), undefined, health);
+  try {
+    await dashboard.start(0);
+    for (const route of ["/api/mcp", "/api/mcp?refresh=1"]) {
+      const res = await fetch(dashboard.url + route);
+      assert.equal(res.status, 200);
+      assert.equal((await res.json()).checking, true);
+    }
+    assert.equal(calls, 1);
+    finish({
+      servers: [{ name: "higs", status: "needs_auth", higgsfield: true }],
+      error: null,
+    });
+    await health.settled();
+    const data = await (await fetch(dashboard.url + "/api/mcp")).json();
+    assert.equal(data.checking, false);
+    assert.equal(data.higgsfield.available, false);
+    assert.equal(data.higgsfield.status, "needs_auth");
+    assert.equal(
+      (await httpRequest(dashboard.url + "/api/mcp", { Host: "foreign.test" }))
+        .status,
+      403,
+    );
+  } finally {
+    await dashboard.close();
+    await f.close();
+  }
+});

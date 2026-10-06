@@ -72,6 +72,7 @@ export interface Task {
   attempt: number;
   assignment_id: string | null;
   result?: string;
+  updated_at?: string;
   event_ids: Record<string, string>;
 }
 export interface Operation {

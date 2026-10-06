@@ -284,6 +284,7 @@ export function report(r: Run, payload: any) {
       "Supported: team-create, plan, progress, completed, failed, question",
     );
   a.seq = payload.sequence;
+  t.updated_at = now();
   t.event_ids[event] = signature;
   return { accepted: true };
 }

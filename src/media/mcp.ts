@@ -1,46 +1,19 @@
-import {
-  spawn,
-  execFile,
-  ChildProcessWithoutNullStreams,
-} from "node:child_process";
-import { promisify } from "node:util";
+import { spawn, ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { Config, Fault, fail } from "../contracts/types.js";
 import { Lines } from "../herdr/transport.js";
-const exec = promisify(execFile);
 export async function detectMcp() {
-  try {
-    const { stdout } = await exec(
-      "claude",
-      ["--setting-sources", "", "mcp", "list"],
-      {
-        timeout: 25000,
-        maxBuffer: 1024 * 1024,
-      },
-    );
-    const lines = stdout.split("\n").filter((s) => /higgs?field/i.test(s));
-    return {
-      source: "claude mcp list",
-      detected: lines.length > 0,
-      connected: lines.some(
-        (s) => /✓|connected/i.test(s) && !/disconnected|failed|needs/i.test(s),
-      ),
-      servers: lines.map((s) =>
-        s
-          .split(":")[0]
-          .trim()
-          .replace(/[^a-zA-Z0-9 _.-]/g, ""),
-      ),
-      note: "Installed Claude MCP is reused by default. No credentials are copied.",
-    };
-  } catch {
-    return {
-      source: "claude mcp list",
-      detected: false,
-      connected: false,
-      note: "MCP discovery unavailable or timed out",
-    };
-  }
+  const { probeInstalledMcp } = await import("./health.js");
+  const result = await probeInstalledMcp();
+  const servers = result.servers.filter((s) => s.higgsfield);
+  return {
+    source: "claude mcp list",
+    detected: servers.length > 0,
+    connected: servers.some((s) => s.status === "connected"),
+    servers: servers.map((s) => s.name),
+    error: result.error,
+    note: "Installed Claude MCP is reused. Connection health does not prove image generation.",
+  };
 }
 export class Mcp {
   child?: ChildProcessWithoutNullStreams;
