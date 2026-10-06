@@ -29,7 +29,7 @@ const roles = { pm: "총괄 PM", developer: "개발자", designer: "디자이너
 const initials = { pm: "PM", developer: "DEV", designer: "DES" };
 const reasons = {
   broker_restarted:
-    "브로커가 재시작되었습니다. 상태 확인 후 CLI에서 재개하세요.",
+    "브로커가 재시작되었습니다. 실행 준비를 확인한 후 작업을 재개하세요.",
   operation_unknown: "외부 요청의 접수 여부를 확인해야 합니다.",
   resource_missing: "에이전트 실행 자원을 찾을 수 없습니다.",
   resource_owner_mismatch: "실행 자원의 소유 정보가 일치하지 않습니다.",
@@ -216,6 +216,42 @@ function projectDetail(p) {
     );
   header.append(title, actions);
   root.append(header);
+  if (["queued", "paused"].includes(p.status)) {
+    const controls = el("section", "execution-panel");
+    const text = el("div");
+    text.append(
+      el(
+        "h3",
+        "",
+        p.status === "paused"
+          ? "중단된 작업을 이어서 진행"
+          : "홈페이지 제작 시작",
+      ),
+    );
+    text.append(
+      el(
+        "p",
+        "help",
+        snapshot.execution_enabled
+          ? "실행 준비를 확인하고 현재 요청을 시작·재개합니다. 실행 슬롯이 없으면 큐에서 기다립니다."
+          : "실행 설정이 꺼져 있습니다. 버튼에서 필요한 설정과 준비 상태를 확인하세요.",
+      ),
+    );
+    const start = el(
+      "button",
+      "button primary",
+      p.status === "paused" ? "작업 재개" : "제작 시작",
+    );
+    start.dataset.focus = "execute-project";
+    start.dataset.executionControl = "true";
+    start.disabled = offline;
+    start.onclick = () => {
+      if (offline || Date.now() - lastSuccess > 10000) return;
+      window.homepage?.executeProject(p.project_id, p.run_id);
+    };
+    controls.append(text, start);
+    root.append(controls);
+  }
   const done = p.tasks.filter((t) => t.status === "completed").length;
   const ph = el("div", "progress-heading");
   ph.append(
@@ -368,6 +404,9 @@ async function refresh() {
     snapshot = data;
     lastSuccess = Date.now();
     offline = false;
+    document
+      .querySelectorAll("[data-execution-control]")
+      .forEach((b) => (b.disabled = false));
     document.body.dataset.offline = "false";
     $("connection").textContent = "● 브로커 연결됨";
     $("connection").className = "live";
@@ -380,6 +419,9 @@ async function refresh() {
     }
   } catch {
     offline = true;
+    document
+      .querySelectorAll("[data-execution-control]")
+      .forEach((b) => (b.disabled = true));
     document.body.dataset.offline = "true";
     $("connection").textContent = "● 상태 갱신 지연";
     $("connection").className = "offline";

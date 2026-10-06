@@ -47,7 +47,9 @@
   async function api(url, payload) {
     const res = await fetch(url, {
       cache: "no-store",
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(
+        url === "/api/projects/execute" ? 65000 : 20000,
+      ),
       ...(payload
         ? {
             method: "POST",
@@ -60,8 +62,11 @@
         : {}),
     });
     const data = await res.json();
-    if (!res.ok)
-      throw new Error(`${data.message ?? data.error} (${data.error})`);
+    if (!res.ok) {
+      const e = new Error(`${data.message ?? data.error} (${data.error})`);
+      e.code = data.error;
+      throw e;
+    }
     return data;
   }
   async function create(send) {
@@ -149,7 +154,165 @@
       $("inspect-data").textContent = e.message;
     }
   }
+  let executionTarget,
+    executionInfo,
+    executionBusy = false,
+    pendingExecution;
+  const executionKey = () =>
+    `homepage-execution:${executionTarget.project_id}:${executionTarget.run_id}`;
+  const executionMessage = (text) => {
+    $("execution-result").hidden = false;
+    $("execution-result").textContent = text;
+  };
+  function executionButtons() {
+    $("execution-refresh").disabled = executionBusy;
+    $("execution-send").disabled =
+      executionBusy || !(pendingExecution || executionInfo?.ready);
+    $("execution-send").textContent = executionBusy
+      ? "실행 요청 처리 중…"
+      : pendingExecution
+        ? "같은 요청으로 결과 확인"
+        : executionInfo?.action === "resume"
+          ? "확인 후 작업 재개"
+          : "확인 후 제작 시작";
+  }
+  async function checkExecution() {
+    if (!executionTarget || executionBusy) return;
+    executionBusy = true;
+    executionInfo = null;
+    executionButtons();
+    $("execution-checks").textContent =
+      "프로젝트와 실행 환경을 확인하고 있습니다…";
+    try {
+      boot = await api("/api/bootstrap");
+      const info = await api(
+        `/api/projects/${encodeURIComponent(executionTarget.project_id)}/execution`,
+      );
+      if (info.run_id !== executionTarget.run_id) {
+        pendingExecution = null;
+        info.ready = false;
+        info.checks.unshift({
+          ok: false,
+          label: "실행 버전 변경",
+          detail:
+            "다른 run이 생성됐습니다. 창을 닫고 최신 프로젝트에서 다시 요청하세요.",
+        });
+      }
+      executionInfo = info;
+      $("execution-title").textContent =
+        info.action === "resume" ? "작업 재개 준비" : "홈페이지 제작 시작 준비";
+      $("execution-target").textContent =
+        `${info.project_id} · ${info.model} / ${info.effort} · 슬롯 ${info.slots_used}/${info.max_slots}`;
+      $("execution-checks").replaceChildren();
+      for (const c of info.checks) {
+        const row = node("div", "", `execution-check${c.ok ? "" : " blocked"}`);
+        row.append(
+          node("span", c.ok ? "확인됨" : "조치 필요", "check-state"),
+          node("strong", c.label),
+          node("p", c.detail, "help"),
+        );
+        $("execution-checks").append(row);
+      }
+      $("execution-note").textContent =
+        `${info.ready ? "기본 준비 확인을 통과했습니다. 요청 전송 시 실제 MCP 연결을 확인합니다." : "표시된 준비 항목을 해결한 뒤 다시 확인하세요. 현재 상태에서는 모델을 시작하지 않습니다."} ${info.waiting_for_slot ? "현재 슬롯이 가득 차 있어 실행 요청 후 큐에서 대기합니다." : ""} ${info.note}`;
+      $("execution-config").textContent =
+        `설정 파일: ${info.config_file}\n필수 항목: allowExecution: true, skills: [승인한 SKILL.md 절대 경로], mcp: 실제 stdio 실행 명령과 도구 매핑`;
+      $("execution-setup").open = !info.ready;
+    } catch (e) {
+      $("execution-checks").textContent =
+        `준비 상태를 확인하지 못했습니다: ${e.message}`;
+      $("execution-note").textContent =
+        "브로커 연결을 확인하고 다시 시도하세요.";
+    } finally {
+      executionBusy = false;
+      executionButtons();
+    }
+  }
+  async function openExecution(id, run) {
+    if (executionBusy) return;
+    executionTarget = { project_id: id, run_id: run };
+    pendingExecution = null;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(executionKey()));
+      if (
+        saved?.project_id === id &&
+        saved?.run_id === run &&
+        saved?.command_id
+      )
+        pendingExecution = saved;
+    } catch {}
+    $("execution-result").hidden = true;
+    $("execution-title").textContent = "실행 준비";
+    $("execution-target").textContent = id;
+    $("execution-note").textContent = "";
+    $("execution-config").textContent = "";
+    $("execution-setup").open = false;
+    $("execution-dialog").showModal();
+    if (pendingExecution)
+      executionMessage(
+        "이전 요청의 결과를 확인해야 합니다. 같은 요청 ID로 확인하며 중복 실행하지 않습니다.",
+      );
+    await checkExecution();
+  }
+  async function sendExecution() {
+    if (executionBusy || (!pendingExecution && !executionInfo?.ready)) return;
+    const request = pendingExecution ?? {
+      ...executionTarget,
+      action: executionInfo.action,
+      command_id: crypto.randomUUID(),
+    };
+    pendingExecution = request;
+    try {
+      sessionStorage.setItem(executionKey(), JSON.stringify(request));
+    } catch {}
+    executionBusy = true;
+    executionButtons();
+    executionMessage(
+      "브로커 CLI로 요청을 전달하고 있습니다. 같은 프로젝트를 다시 생성하지 마세요.",
+    );
+    try {
+      const result = await api("/api/projects/execute", request);
+      try {
+        sessionStorage.removeItem(executionKey());
+      } catch {}
+      pendingExecution = null;
+      executionMessage(
+        `${result.action === "resume" ? "재개" : "시작"} 요청 접수 완료 · ${result.project_id}\n현재 run: ${result.run_id}\n실행은 큐 순서와 슬롯에 따라 진행됩니다. 실제 실행 여부는 프로젝트 상태에서 확인하세요.`,
+      );
+      executionInfo = null;
+      document.getElementById("refresh").click();
+    } catch (e) {
+      if (
+        e.code &&
+        ![
+          "receipt_unknown",
+          "command_indeterminate",
+          "timeout",
+          "disconnected",
+          "cli_failed",
+        ].includes(e.code)
+      ) {
+        try {
+          sessionStorage.removeItem(executionKey());
+        } catch {}
+        pendingExecution = null;
+        executionInfo = null;
+        executionMessage(
+          `실행하지 못했습니다: ${e.message}\n준비 상태를 다시 확인하세요.`,
+        );
+      } else
+        executionMessage(
+          `요청 결과 확인 필요: ${e.message}\n같은 요청으로 결과 확인을 누르세요. 새로운 요청 ID를 만들지 않습니다.`,
+        );
+    } finally {
+      executionBusy = false;
+      executionButtons();
+    }
+  }
+  $("execution-refresh").onclick = checkExecution;
+  $("execution-send").onclick = sendExecution;
   window.homepage = {
+    executeProject: openExecution,
     inspectProject: (id) =>
       inspect(
         `${id} · JSON 상태`,
@@ -217,7 +380,7 @@
     );
     section(
       "4. 상태 체크와 실행 전제",
-      "상태 체크에서 homepage 연결과 실행 허용 여부를 확인하세요. allowExecution=false면 접수만 수행합니다. 실제 실행에는 Claude Opus 5.5 high, 승인한 홈페이지 스킬 경로, 브로커의 Higgsfield MCP 설정이 필요합니다. Claude에 설치된 MCP와 브로커 연결은 별도입니다.",
+      "프로젝트 상세의 제작 시작 또는 작업 재개 버튼에서 실행 준비를 확인하고 요청합니다. 실행 허용·스킬·MCP·문서·homepage 세션이 준비되지 않으면 조치할 항목이 표시됩니다. 설정이 준비되면 CLI를 통해 현재 run에 요청을 전달하며, 슬롯이 없으면 큐에서 대기합니다. allowExecution=false면 접수만 수행합니다. Claude에 설치된 MCP와 브로커 연결은 별도입니다.",
     );
     section(
       "5. 공개 GitHub에서 플러그인 설치",

@@ -173,7 +173,11 @@ export class Dashboard {
     if (
       req.method === "POST" &&
       this.config &&
-      ["/api/projects/init", "/api/projects/submit"].includes(route ?? "")
+      [
+        "/api/projects/init",
+        "/api/projects/submit",
+        "/api/projects/execute",
+      ].includes(route ?? "")
     ) {
       if (
         req.headers.origin !== `http://${req.headers.host}` ||
@@ -195,6 +199,39 @@ export class Dashboard {
         if (!input || typeof input.project_id !== "string")
           fail("invalid_project", "project_id is required");
         projectDirectory(this.config, input.project_id);
+        if (route === "/api/projects/execute") {
+          if (
+            Object.keys(input).some(
+              (k) =>
+                !["project_id", "run_id", "command_id", "action"].includes(k),
+            ) ||
+            typeof input.run_id !== "string" ||
+            !input.run_id ||
+            input.run_id.length > 128 ||
+            typeof input.command_id !== "string" ||
+            !/^[a-zA-Z0-9_-]{8,128}$/.test(input.command_id) ||
+            !["start", "resume"].includes(input.action)
+          )
+            fail(
+              "invalid_request",
+              "execute requires project_id, run_id, command_id and action:start|resume",
+            );
+          const result = await projectCli(this.config, "execute", {
+            schema_version: 1,
+            command_id: input.command_id,
+            type: "execute",
+            project_id: input.project_id,
+            run_id: input.run_id,
+            payload: { action: input.action },
+          });
+          json(200, {
+            ...result,
+            transport: "broker-cli",
+            execution_transport: "herdr-cli",
+            session: "homepage",
+          });
+          return;
+        }
         if (
           route === "/api/projects/submit" &&
           Object.keys(input).some((key) => key !== "project_id")
@@ -235,14 +272,14 @@ export class Dashboard {
         service: "herdr-homepage-broker",
         session: "homepage",
         read_only: !this.config,
-        version: "0.2.2",
+        version: "0.3.0",
       });
       return;
     }
     if (route === "/api/bootstrap") {
       json(200, {
         session: "homepage",
-        version: "0.2.2",
+        version: "0.3.0",
         projects_root: this.config?.projectsRoot ?? null,
         config_file: process.env.HOMEPAGE_CONFIG || defaultConfigFile(),
         can_submit: !!this.config,
@@ -264,7 +301,7 @@ export class Dashboard {
           }
           const s = await this.read();
           return {
-            version: "0.2.2",
+            version: "0.3.0",
             session: "homepage",
             broker: {
               available: true,
@@ -282,6 +319,7 @@ export class Dashboard {
               s.execution_enabled &&
               herdr.available &&
               c.mcp &&
+              c.skills.length > 0 &&
               !s.storage_fault
             ),
             note: "MCP 실제 연결과 모델 사용 가능성은 doctor에서 별도 확인합니다.",
@@ -298,6 +336,26 @@ export class Dashboard {
         json(200, await this.checks);
       } catch {
         json(503, { error: "checks_unavailable" });
+      }
+      return;
+    }
+    const execution = route?.match(
+      /^\/api\/projects\/([a-zA-Z0-9_-]+)\/execution$/,
+    );
+    if (execution && this.config) {
+      try {
+        const result = await projectCli(this.config, "readiness", {
+          project_id: execution[1],
+        });
+        json(200, {
+          ...result,
+          config_file: process.env.HOMEPAGE_CONFIG || defaultConfigFile(),
+        });
+      } catch (e: any) {
+        json(e.code === "unknown_project" ? 404 : 503, {
+          error: e.code ?? "execution_check_failed",
+          message: e.message,
+        });
       }
       return;
     }

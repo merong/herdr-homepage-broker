@@ -55,8 +55,29 @@ TUI 보드도 연결이 끊기면 마지막 수신 상태를 표시하고 같은
 
 ## 상태 체크와 도움말
 
+프로젝트 상세에서 `queued`는 **제작 시작**, `paused`는 **작업 재개** 버튼을 제공합니다. 버튼을 누르면 실행 준비 화면에서 모델 실행 허용, 홈페이지 스킬, Higgsfield MCP 설정, 문서 해시, homepage 연결, 입력 요청·실행 자원 상태를 확인합니다. 부족한 항목과 설정 파일 경로를 표시합니다. 준비를 통과한 경우 **확인 후 제작 시작/작업 재개**로 요청을 보냅니다.
+
+웹 요청은 고정된 `execute` CLI를 거쳐 현재 `project_id`와 `run_id`에만 적용합니다. 실제 MCP 연결과 생성·상태 도구 존재 여부는 전송 시 확인합니다. 요청 접수와 실제 실행 시작은 다릅니다. FIFO 순서와 최대 2개 슬롯을 유지하므로 슬롯이 차면 대기합니다. 이미 실행 중이거나 종료된 run, 미응답 질문, 불명확한 외부 요청이 있으면 거부합니다.
+
+`allowExecution:false`는 웹 버튼으로 우회하지 않습니다. 설정 파일에 승인한 `skills`, 실제 `mcp` 연결 정보, `allowExecution:true`를 지정하고 브로커를 재시작합니다. 실행 허용은 큐 전체에 적용되므로 다른 대기 요청도 자동으로 실행될 수 있습니다. 모델 사용 권한과 생성 성공 여부는 이 사전 점검만으로 보장되지 않습니다.
+
+응답이 끊기면 **같은 요청으로 결과 확인**을 사용합니다. 같은 탭의 새로고침 후에도 요청 ID를 유지하며, 이미 접수한 요청을 중복 실행하지 않습니다. 브로커 연결이 끊기면 실행 버튼이 비활성화됩니다. 실행 준비가 완료되지 않은 경우에는 설정을 수정하고 **준비 상태 다시 확인**을 누릅니다.
+
+CLI 사전 점검은 `node dist/src/cli.js project readiness --project ID`입니다. 웹 시작/재개와 같은 검증을 거치는 명령은 아래 JSON을 파일로 저장한 뒤 `node dist/src/cli.js execute --file execute.json`으로 보냅니다. UUID와 프로젝트 ID는 현재 요청 값으로 바꿉니다. `action`은 대기 요청이면 `start`, 일시 정지 요청이면 `resume`입니다.
+
+```json
+{
+  "schema_version": 1,
+  "command_id": "REPLACE_WITH_UUID",
+  "type": "execute",
+  "project_id": "company-homepage",
+  "run_id": "CURRENT_RUN_UUID",
+  "payload": { "action": "start" }
+}
+```
+
 **상태 체크**는 브로커, homepage Socket API, 실행 허용, MCP 설정 유무, 승인 스킬 수를 보여줍니다. 실제 MCP 접속·모델 계정 검증은 수행하지 않습니다. 설치 checkout에서 `node dist/src/cli.js doctor`로 상세 진단합니다.
 
 **도움말**에는 프로젝트 초기화, 경로 설정, 상태 의미, 입력 응답, GitHub 설치·태그 업데이트, Herdr 자체 업데이트와 문제 해결이 포함됩니다. 설치·업데이트는 [설치 문서](installation.md)를 참고하세요.
 
-웹 서버는 loopback에서만 동작합니다. 상태 읽기와 초기화·submit 두 작업만 HTTP로 노출하며 변경 요청은 같은 출처와 CSRF 토큰을 확인합니다. 답변·재개·취소·피드백은 기존 CLI를 사용합니다. 이 웹 서버를 원격 공개용 REST 큐로 사용하지 않습니다.
+웹 서버는 loopback에서만 동작합니다. 상태 읽기와 초기화·submit·시작/재개 작업을 HTTP로 노출하며 변경 요청은 같은 출처와 CSRF 토큰을 확인합니다. 답변·취소·피드백은 기존 CLI를 사용합니다. 이 웹 서버를 원격 공개용 REST 큐로 사용하지 않습니다.

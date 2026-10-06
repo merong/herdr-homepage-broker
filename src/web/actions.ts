@@ -6,20 +6,19 @@ import { brokerSocket } from "../config.js";
 // a shell command or a Herdr prompt. Actual model dispatch stays in the broker.
 export function projectCli(
   c: Config,
-  action: "init" | "submit",
+  action: "init" | "submit" | "readiness" | "execute",
   input: any,
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     const args = [
       fileURLToPath(new URL("../cli.js", import.meta.url)),
-      "project",
-      action,
+      ...(action === "execute" ? ["execute"] : ["project", action]),
       "--socket",
       brokerSocket(c),
       "--projects-root",
       c.projectsRoot!,
     ];
-    if (action === "init") args.push("--file", "-");
+    if (["init", "execute"].includes(action)) args.push("--file", "-");
     else args.push("--project", input.project_id);
     const child = spawn(process.execPath, args, {
       env: {
@@ -38,15 +37,18 @@ export function projectCli(
       clearTimeout(timer);
       e ? reject(e) : resolve(value);
     };
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      finish(
-        new Fault(
-          "receipt_unknown",
-          "CLI response timed out. Retry the same request; do not create a new ID.",
-        ),
-      );
-    }, 15000);
+    const timer = setTimeout(
+      () => {
+        child.kill("SIGTERM");
+        finish(
+          new Fault(
+            "receipt_unknown",
+            "CLI response timed out. Retry the same request; do not create a new ID.",
+          ),
+        );
+      },
+      action === "execute" ? 60000 : 15000,
+    );
     child.on("error", (e) => finish(e));
     child.stdin.on("error", () => {});
     child.stdout.on("data", (b) => {
@@ -82,6 +84,8 @@ export function projectCli(
         );
       }
     });
-    child.stdin.end(action === "init" ? JSON.stringify(input) : undefined);
+    child.stdin.end(
+      ["init", "execute"].includes(action) ? JSON.stringify(input) : undefined,
+    );
   });
 }

@@ -17,6 +17,8 @@ export const commandSchema = {
         "apply-inputs",
         "feedback",
         "resume",
+        "execute",
+        "execution-status",
         "cancel",
         "report",
         "preview-start",
@@ -69,6 +71,8 @@ export const payloadSchemas: Record<string, any> = {
   }),
   feedback: payload(["inputs", "feedback"], { inputs, feedback: string }),
   resume: payload([], {}),
+  execute: payload(["action"], { action: { enum: ["start", "resume"] } }),
+  "execution-status": payload([], {}),
   cancel: payload([], {}),
   report: payload(
     [
@@ -121,7 +125,7 @@ export const fullCommandSchema = {
       required:
         type === "status"
           ? []
-          : type === "submit"
+          : ["submit", "execution-status"].includes(type)
             ? ["project_id"]
             : ["project_id", "run_id"],
       properties: { payload: schema },

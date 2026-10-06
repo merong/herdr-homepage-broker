@@ -56,6 +56,19 @@ export async function main(argv = process.argv.slice(2)) {
       output(await initializeProject(c, JSON.parse(input)));
       return;
     }
+    if (argv[1] === "readiness") {
+      if (!id) fail("usage", "project readiness requires --project ID");
+      output(
+        await request(socket, {
+          schema_version: 1,
+          command_id: randomUUID(),
+          type: "execution-status",
+          project_id: id,
+          payload: {},
+        }),
+      );
+      return;
+    }
     if (!id) fail("usage", "project submit|state requires --project ID");
     if (argv[1] === "submit") {
       output(await request(socket, await initializedRequest(c, id)));
@@ -72,7 +85,7 @@ export async function main(argv = process.argv.slice(2)) {
       output(await projectFiles(status.projects[0]));
       return;
     }
-    fail("usage", "project init|submit|state|sample");
+    fail("usage", "project init|submit|state|readiness|sample");
   }
   if (["broker", "plugin"].includes(mode) && argv[1] === "stop") {
     if (mode === "plugin") actionGuard(c);
@@ -132,7 +145,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (mode === "help" || mode === "--help") {
     console.log(
-      `herdr-webjobs — homepage session broker\n\nbroker start|ensure|stop|status|recover [--config file]\nproject init --file init.json | submit|state --project ID | sample\nsubmit|answer|apply-inputs|feedback|resume|cancel|report --file command.json\nmedia request|status --file command.json\npreview start|stop --file command.json\nreconcile --file command.json\nstatus [--project id] [--socket path]\nweb open|status\nboard | doctor | plugin start|stop|board|status|web|web-status\n\nAll writes require schema_version:1, command_id, type, payload and explicit target IDs.\nSubmit additionally requires project_id, payload.directory and payload.inputs.prd/design {path,sha256}.\nNo shell interpolation, model fallback, automatic auth approval or non-homepage session fallback.`,
+      `herdr-webjobs — homepage session broker\n\nbroker start|ensure|stop|status|recover [--config file]\nproject init --file init.json | submit|state|readiness --project ID | sample\nsubmit|answer|apply-inputs|feedback|resume|execute|cancel|report --file command.json\nmedia request|status --file command.json\npreview start|stop --file command.json\nreconcile --file command.json\nstatus [--project id] [--socket path]\nweb open|status\nboard | doctor | plugin start|stop|board|status|web|web-status\n\nAll writes require schema_version:1, command_id, type, payload and explicit target IDs.\nSubmit additionally requires project_id, payload.directory and payload.inputs.prd/design {path,sha256}.\nNo shell interpolation, model fallback, automatic auth approval or non-homepage session fallback.`,
     );
     return;
   }

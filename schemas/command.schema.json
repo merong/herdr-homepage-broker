@@ -25,6 +25,8 @@
         "apply-inputs",
         "feedback",
         "resume",
+        "execute",
+        "execution-status",
         "cancel",
         "report",
         "preview-start",
@@ -359,6 +361,60 @@
         "required": [
           "project_id",
           "run_id"
+        ],
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [],
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "execute"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "project_id",
+          "run_id"
+        ],
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "start",
+                  "resume"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "execution-status"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "project_id"
         ],
         "properties": {
           "payload": {

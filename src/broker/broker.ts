@@ -43,6 +43,7 @@ import {
 import { syncTsk } from "../herdr/tsk.js";
 import { brokerSocket } from "../config.js";
 import { Dashboard } from "../web/server.js";
+import { executionReadiness } from "./execution.js";
 export class Broker {
   store: Store;
   herdr: Herdr;
@@ -193,6 +194,8 @@ export class Broker {
   async handle(c: Command): Promise<any> {
     c = command(c);
     if (c.type === "status") return this.status(c.project_id);
+    if (c.type === "execution-status")
+      return this.executionStatus(required(c, "project_id"));
     if (this.store.failed)
       fail(
         "storage_unknown",
@@ -211,6 +214,44 @@ export class Broker {
       return { ...old.result, projection_pending: this.store.pending };
     }
     let result: any;
+    if (c.type === "execute") {
+      const { r } = target(this.store.state, c);
+      if (r.herdr.workspace_id) await this.observe(await this.herdr.snapshot());
+      const readiness = await this.executionStatus(required(c, "project_id"));
+      if (readiness.action !== c.payload.action)
+        fail(
+          "execution_state_changed",
+          "프로젝트 상태가 변경됐습니다. 실행 준비를 다시 확인하세요.",
+        );
+      if (!readiness.ready)
+        fail(
+          "execution_not_ready",
+          readiness.checks
+            .filter((v) => !v.ok)
+            .map((v) => `${v.label}: ${v.detail}`)
+            .join("\n"),
+        );
+      if (!this.mcp)
+        fail("mcp_unconfigured", "Higgsfield MCP 연결이 필요합니다.");
+      await this.mcp.connect();
+      const next = structuredClone(this.store.state);
+      if (c.payload.action === "resume")
+        await mutate(next, { ...c, type: "resume", payload: {} }, this.config);
+      result = {
+        project_id: c.project_id,
+        run_id: c.run_id,
+        status: "queued",
+        action: c.payload.action,
+        execution_requested: true,
+      };
+      next.commands[c.command_id] = { hash: digest, result };
+      await this.store.commit(next);
+      return {
+        ...result,
+        projection_pending: this.store.pending,
+        revision: this.store.state.revision,
+      };
+    }
     if (["resume", "feedback", "apply-inputs"].includes(c.type)) {
       const { r } = target(this.store.state, c);
       if (r.herdr.workspace_id) await this.observe(await this.herdr.snapshot());
@@ -356,6 +397,17 @@ export class Broker {
       projection_pending: this.store.pending,
       revision: this.store.state.revision,
     };
+  }
+  async executionStatus(project: string) {
+    const p = this.store.state.projects[project];
+    if (!p) fail("unknown_project", "Project not found");
+    return executionReadiness(this.config, p, current(p), this.herdr, {
+      storage_fault: this.store.failed,
+      projection_pending: this.store.pending,
+      slots: Object.values(this.store.state.projects).filter(
+        (p) => current(p).slot,
+      ).length,
+    });
   }
   status(project?: string) {
     const ps = project

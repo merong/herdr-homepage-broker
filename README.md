@@ -6,7 +6,7 @@
 - Herdr CLI와 Socket API로 최대 2개 프로젝트, 프로젝트별 PM·개발자·디자이너를 구성.
 - Claude Code `claude-opus-5-5`, high effort. 실제 실행에는 별도 Higgsfield MCP와 승인한 스킬 설정이 필요.
 - `meta.json`, `task.json`, `agents.json` 상태 확인, 동일 요청 재전송 방지, 재시작 후 명시적 재개.
-- 내장 웹 UI: 검색·필터·입력 요청·미리보기·JSON 상태 확인·환경 체크·도움말.
+- 내장 웹 UI: 검색·필터·입력 요청·미리보기·JSON 상태 확인·환경 체크·도움말·제작 시작/작업 재개.
 
 기본은 `allowExecution:false`인 접수 모드입니다. 실제 모델·Higgsfield로 홈페이지 제작을 완료하는 통합 검증은 아직 끝나지 않았습니다. 화면의 접수 성공과 실제 에이전트 실행을 구분합니다.
 
@@ -21,7 +21,7 @@ herdr --session homepage
 별도 터미널에서 플러그인을 설치합니다.
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.2.2 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.3.0 --yes
 ```
 
 `homepage` 작업공간에서 시작합니다. 작업공간이 없다면 `herdr --session homepage workspace create --cwd "$HOME" --label homepage-control --focus`로 만듭니다.
