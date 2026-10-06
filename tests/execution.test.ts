@@ -126,6 +126,9 @@ test("E02 real HTTP to CLI start deduplicates and starts only the PM", async () 
       f.h.calls.filter((c) => c[0] === "agent" && c[1] === "start").length,
       1,
     );
+    const start = f.h.calls.find((c) => c[0] === "agent" && c[1] === "start")!;
+    assert.equal(start.includes("--disallowedTools"), false);
+    assert.equal(start.includes("--disable-slash-commands"), false);
     const calls = f.h.calls.length;
     assert.equal(
       (await f.send(command)).status,
@@ -279,7 +282,8 @@ test("E07 installed Claude MCP needs no broker mapping and only the requested pr
     for (const args of starts) {
       assert.equal(args.includes("--strict-mcp-config"), false);
       assert.equal(args.includes("--mcp-config"), false);
-      assert.ok(args.includes("--disable-slash-commands"));
+      assert.equal(args.includes("--disable-slash-commands"), false);
+      assert.equal(args.includes("--disallowedTools"), false);
       assert.ok(args.includes("--setting-sources="));
       assert.ok(args.every((arg) => arg.length > 0 && !/[\n\r\x00]/.test(arg)));
       const systemFile = args[args.indexOf("--append-system-prompt-file") + 1];

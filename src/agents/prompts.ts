@@ -83,13 +83,10 @@ export const claudeArgs = (systemFile: string, installedMcp = false) => [
   "claude-opus-5-5",
   "--effort",
   "high",
-  "--disable-slash-commands",
   ...(installedMcp
     ? []
     : ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}']),
   "--setting-sources=",
-  "--disallowedTools",
-  "Agent,Task,Skill",
   "--append-system-prompt-file",
   systemFile,
 ];
