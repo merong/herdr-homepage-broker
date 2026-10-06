@@ -1,7 +1,11 @@
 import net from "node:net";
 import { Command, Fault } from "../contracts/types.js";
 import { Lines } from "../herdr/transport.js";
-export function request(socket: string, command: Command): Promise<any> {
+export function request(
+  socket: string,
+  command: Command,
+  timeout = 120000,
+): Promise<any> {
   return new Promise((resolve, reject) => {
     const s = net.connect(socket);
     let done = false;
@@ -21,7 +25,7 @@ export function request(socket: string, command: Command): Promise<any> {
             ),
           ),
     );
-    s.setTimeout(120000);
+    s.setTimeout(timeout);
     s.on("connect", () => s.write(JSON.stringify(command) + "\n"));
     s.on("data", (b) => {
       try {
@@ -35,7 +39,9 @@ export function request(socket: string, command: Command): Promise<any> {
       finish(
         new Fault(
           "timeout",
-          "Command receipt unknown; reuse the same command_id",
+          command.type === "status"
+            ? "Status request timed out"
+            : "Command receipt unknown; reuse the same command_id",
         ),
       ),
     );

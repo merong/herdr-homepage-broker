@@ -17,7 +17,7 @@ Herdr가 없다면 [공식 설치 안내](https://herdr.dev/)를 따릅니다. `
 ## GitHub 릴리스 설치
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.2.1 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.2.2 --yes
 ```
 
 설치가 의존성 설치와 TypeScript·정적 UI 빌드를 실행합니다. `dist`와 `node_modules`는 Git에 포함하지 않습니다. `--ref`를 고정하면 재현 가능한 버전을 설치할 수 있습니다.
@@ -59,11 +59,11 @@ Herdr 0.9.3에는 `plugin update`가 없습니다. 원하는 Git 태그로 `plug
 
 ```sh
 herdr --session homepage plugin action invoke stop --plugin herdr-homepage-broker
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.2.1 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.2.2 --yes
 herdr --session homepage plugin action invoke start --plugin herdr-homepage-broker
 ```
 
-`v0.2.1`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
+`v0.2.2`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
 
 Herdr 프로그램 자체의 업데이트는 별도 `herdr update` 명령입니다. 플러그인 릴리스 설치를 위해 Herdr 전체 세션을 강제 종료하지 않습니다.
 
@@ -75,6 +75,8 @@ herdr --session homepage plugin log list --plugin herdr-homepage-broker
 ```
 
 - EADDRINUSE: 다른 로컬 서버가 사용 중인 포트입니다. `web.port`를 바꾸고 브로커만 재시작합니다.
+- ENOENT / broker.sock: 브로커가 중지됐거나 시작되지 않은 상태입니다. `plugin action invoke start --plugin herdr-homepage-broker`를 `--session homepage`와 함께 실행합니다. `stop`은 상태 조회가 아니라 브로커 종료 명령입니다. 보드는 연결 끊김과 마지막 수신 상태를 표시하고 자동 재연결하며, 브로커 자체를 자동 시작하지 않습니다. 연결 복구 후 필요한 프로젝트만 명시적으로 재개합니다.
+- 보드의 `r`은 프로젝트 재개이며 브로커 시작이나 `allowExecution` 설정 변경이 아닙니다. 연결이 끊긴 동안 `r`/`c`/`p`는 비활성입니다.
 - 실행 비활성: 큐 접수는 가능하지만 모델은 시작하지 않습니다. 스킬과 MCP를 준비한 뒤 활성화합니다.
 - MCP configured와 connected는 다릅니다. 웹 상태 체크는 설정 유무를 보고하며 실제 접속은 CLI `doctor`로 확인합니다.
 - 손상·불일치한 JSON은 직접 덮어쓰지 말고 CLI 상태와 checkpoint를 대조합니다.

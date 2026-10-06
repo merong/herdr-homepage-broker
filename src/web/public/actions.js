@@ -236,7 +236,7 @@
     );
     section(
       "8. Herdr 자체 업데이트와 문제 해결",
-      "플러그인 업데이트와 Herdr 프로그램 업데이트는 별도입니다. Herdr 자체 업데이트가 필요할 때만 herdr update를 사용하세요. 포트 충돌은 web.port를 바꾸고 브로커를 재시작합니다. JSON 불일치는 잠시 후 재조회합니다. 기존 프로젝트 파일·상태 JSON을 직접 삭제하여 초기화하지 마세요.",
+      "플러그인 업데이트와 Herdr 프로그램 업데이트는 별도입니다. Herdr 자체 업데이트가 필요할 때만 herdr update를 사용하세요. stop은 브로커 종료 명령입니다. ENOENT / broker.sock이면 start 액션으로 다시 시작하세요. 보드의 r은 프로젝트 재개이며 모델 실행 설정을 켜지 않습니다. 포트 충돌은 web.port를 바꾸고 브로커를 재시작합니다. JSON 불일치는 잠시 후 재조회합니다. 기존 프로젝트 파일·상태 JSON을 직접 삭제하여 초기화하지 마세요.",
       "herdr --version\nherdr --session homepage plugin list --json\nherdr --session homepage plugin log list --plugin herdr-homepage-broker",
     );
     const a = node("a", "GitHub 소스와 설치 문서 ↗", "button");

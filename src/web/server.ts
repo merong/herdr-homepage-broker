@@ -235,14 +235,14 @@ export class Dashboard {
         service: "herdr-homepage-broker",
         session: "homepage",
         read_only: !this.config,
-        version: "0.2.1",
+        version: "0.2.2",
       });
       return;
     }
     if (route === "/api/bootstrap") {
       json(200, {
         session: "homepage",
-        version: "0.2.1",
+        version: "0.2.2",
         projects_root: this.config?.projectsRoot ?? null,
         config_file: process.env.HOMEPAGE_CONFIG || defaultConfigFile(),
         can_submit: !!this.config,
@@ -264,7 +264,7 @@ export class Dashboard {
           }
           const s = await this.read();
           return {
-            version: "0.2.1",
+            version: "0.2.2",
             session: "homepage",
             broker: {
               available: true,
