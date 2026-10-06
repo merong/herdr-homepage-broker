@@ -86,3 +86,31 @@ CLI 사전 점검은 `node dist/src/cli.js project readiness --project ID`입니
 **도움말**에는 프로젝트 초기화, 경로 설정, 상태 의미, 입력 응답, GitHub 설치·태그 업데이트, Herdr 자체 업데이트와 문제 해결이 포함됩니다. 설치·업데이트는 [설치 문서](installation.md)를 참고하세요.
 
 웹 서버는 loopback에서만 동작합니다. 상태 읽기와 초기화·submit·시작/재개 작업을 HTTP로 노출하며 변경 요청은 같은 출처와 CSRF 토큰을 확인합니다. 답변·취소·피드백은 기존 CLI를 사용합니다. 이 웹 서버를 원격 공개용 REST 큐로 사용하지 않습니다.
+
+## PM이 팀을 생성하는 시작 흐름
+
+새 run은 **PM 오케스트레이터 한 명만** 시작합니다. `agents.json`에는 세 역할이 예약되지만, 개발자·디자이너는 `waiting_reason: "orchestrator"`이며 아직 pane/terminal ID가 없습니다.
+
+PM은 PRD/design과 실행 폴더의 `homepage-orchestration.md` 지침을 읽고, 현재 `pm-assignment.json`의 권한·작업 식별 정보를 사용해 `report` 명령의 `payload.kind: "team-create"`를 전송합니다. 별도 역할·모델·실행 명령은 지정하지 않습니다. 브로커는 PM의 현재 planning assignment만 허용하고 동일 workspace에 고정된 개발자·디자이너를 생성합니다. 그다음 PM은 sequence를 증가시켜 작업 계획을 보고합니다. 생성 요청 전 계획 제출은 거부합니다.
+
+`meta.json.orchestration`에는 생성 요청 여부, 요청한 PM ID, 요청 시각을 저장합니다. 생성 의도를 먼저 저장하므로 중복 보고·브로커 재시작에도 이미 실행한 에이전트를 추가 생성하지 않습니다. 결과가 불명확한 Herdr 시작 요청은 기존 대조 절차로 처리합니다. 작업자는 다른 에이전트를 만들 수 없으며 총 역할 수는 PM 포함 3개입니다.
+
+지침은 PM 시스템 프롬프트에도 직접 포함되며 홈페이지 전용 스킬을 추가로 설치할 필요가 없습니다. 업데이트 전부터 실행 중이던 팀은 유지하고, 새 프로젝트나 피드백 run부터 적용합니다. 설치된 Claude의 보안·인증 승인을 자동 우회하지 않습니다.
+
+## Herdr 원본 CLI로 실행 확인
+
+Herdr 0.9.3의 도움말과 [공식 CLI 문서](https://herdr.dev/docs/cli-reference/), [에이전트 자동화 문서](https://herdr.dev/docs/agent-automation/)를 기준으로 합니다. 모든 명령에 `--session homepage`를 지정합니다. 아래 `PANE_ID`는 `agents.json`이나 실제 조회 응답의 pane ID로 바꿉니다.
+
+```sh
+herdr --session homepage agent list
+herdr --session homepage agent get PANE_ID
+herdr --session homepage agent read PANE_ID --source visible
+herdr --session homepage pane process-info --pane PANE_ID
+herdr --session homepage agent wait PANE_ID --until idle --until done --timeout 30000
+```
+
+`agent` 명령은 이름 또는 pane ID를 받으며 terminal ID를 대상으로 받지 않습니다. 작업 중 화면은 `visible`로 읽습니다. `process-info`의 실제 인자로 모델과 effort를 확인합니다. idle/done은 입력 가능한 실행 상태이며 홈페이지 납품 완료는 아닙니다.
+
+브로커는 기존 shell pane에 짧은 이름으로 `agent start NAME --kind claude --pane PANE_ID --timeout 30000 -- …`를 실행합니다. `agent_not_ready`나 timeout이 발생했다면 프로세스가 이미 시작됐을 수 있으므로 재실행 전에 화면과 프로세스를 확인해야 합니다. 프롬프트 전달 성공도 작업 완료를 의미하지 않습니다. 오류 후 불명확한 작업을 자동 재전송하지 않습니다.
+
+CLI/API 차이를 확인할 때는 설치된 바이너리의 `herdr api schema --output herdr-api.schema.json`으로 해당 버전의 계약을 저장할 수 있습니다. 별도 Herdr 세션을 중지하거나 다시 만드는 것은 이 점검에 필요하지 않습니다.

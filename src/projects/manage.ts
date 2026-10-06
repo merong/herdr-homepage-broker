@@ -194,6 +194,7 @@ export async function projectFiles(p: {
         reason: meta.reason,
         resume_required: meta.resume_required,
         execution_requested: meta.execution_requested,
+        orchestration: meta.orchestration ?? null,
         slot_reserved: meta.slot_reserved,
         inputs: meta.inputs,
         herdr: {

@@ -14,6 +14,13 @@ export async function prepareRuntime(c: Config, directory: string) {
     model: c.model,
     effort: c.effort,
     roles: [...roles],
+    orchestration: {
+      mode: "pm-led",
+      bootstrap: "pm",
+      team_request: "report:team-create",
+      workers: ["developer", "designer"],
+      max_agents: 3,
+    },
     max_projects: c.maxProjects,
     start_mode: c.autoStart ? "queue" : "explicit",
     skills: c.skills,

@@ -54,6 +54,22 @@ export const cmd = (type: string, p: any, payload: any = {}): Command => ({
   run_id: p.current_run_id,
   payload,
 });
+export const pmReport = (p: any, kind: string, extra: any = {}) => {
+  const r = p.runs.find((r: any) => r.run_id === p.current_run_id);
+  const a = r.agents.find((a: any) => a.role === "pm");
+  const t = r.tasks.find((t: any) => t.task_id === "plan");
+  return cmd("report", p, {
+    agent_id: a.agent_id,
+    token: a.token,
+    task_id: t.task_id,
+    assignment_id: t.assignment_id,
+    attempt: t.attempt,
+    sequence: a.seq + 1,
+    event_id: randomUUID(),
+    kind,
+    ...extra,
+  });
+};
 export class FakeHerdr extends Herdr {
   calls: string[][] = [];
   panes: any[] = [];

@@ -25,6 +25,11 @@ import {
 } from "../storage/store.js";
 export const current = (p: Project) =>
   p.runs.find((r) => r.run_id === p.current_run_id)!;
+// Runs created before PM-led orchestration keep their existing team and lineage.
+export const requiredAgents = (r: Run) =>
+  r.orchestration?.mode === "pm-led" && !r.orchestration.team_requested
+    ? r.agents.filter((a) => a.role === "pm")
+    : r.agents;
 export function target(s: Checkpoint, c: Command) {
   const p = s.projects[c.project_id ?? ""];
   if (!p) fail("unknown_project", "Project not found");
@@ -188,9 +193,27 @@ export function report(r: Run, payload: any) {
   )
     fail("task_closed", "Task no longer owns assignment");
   const kind = required(payload, "kind");
-  if (kind === "plan") {
+  if (kind === "team-create") {
+    if (a.role !== "pm" || t.task_id !== "plan")
+      fail(
+        "report_owner",
+        "Only the PM planning assignment can create the team",
+      );
+    if (r.orchestration?.mode !== "pm-led")
+      fail("legacy_team", "Existing runs already own their team");
+    if (!r.orchestration.team_requested) {
+      r.orchestration.team_requested = true;
+      r.orchestration.requested_by = a.agent_id;
+      r.orchestration.requested_at = now();
+    }
+  } else if (kind === "plan") {
     if (a.role !== "pm" || t.task_id !== "plan")
       fail("report_owner", "Only PM planning task can submit plan");
+    if (r.orchestration && !r.orchestration.team_requested)
+      fail(
+        "team_required",
+        "PM must send team-create before submitting its plan",
+      );
     const tasks = validatePlan(payload.tasks);
     r.tasks.push(...tasks);
     t.status = "completed";
@@ -258,7 +281,7 @@ export function report(r: Run, payload: any) {
   } else
     fail(
       "invalid_report",
-      "Supported: plan, progress, completed, failed, question",
+      "Supported: team-create, plan, progress, completed, failed, question",
     );
   a.seq = payload.sequence;
   t.event_ids[event] = signature;
@@ -283,8 +306,8 @@ export async function newRun(
     role,
     model: c.model,
     effort: "high",
-    status: "ready",
-    waiting_reason: null,
+    status: role === "pm" ? "ready" : "waiting",
+    waiting_reason: role === "pm" ? null : "orchestrator",
     task_id: null,
     token: randomUUID(),
     seq: 0,
@@ -298,12 +321,18 @@ export async function newRun(
     queue_seq: ++s.queue_seq,
     slot: false,
     resume_required: false,
+    orchestration: {
+      mode: "pm-led",
+      team_requested: false,
+      requested_by: null,
+      requested_at: null,
+    },
     agents,
     tasks: [
       makeTask(
         "plan",
         "pm",
-        "Read PRD/design, plan website tasks and file ownership",
+        "Read PRD/design, create developer and designer with team-create, then plan website tasks and file ownership",
       ),
     ],
     questions: [],

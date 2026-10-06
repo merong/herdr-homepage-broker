@@ -34,6 +34,7 @@ export function webSnapshot(s: Snapshot) {
       resume_required: p.resume_required,
       reason: p.reason ?? null,
       workspace_id: p.herdr.workspace_id,
+      orchestration: p.orchestration ?? null,
       input_required: p.input_required,
       preview: {
         status: p.preview.status,

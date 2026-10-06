@@ -45,6 +45,16 @@ const outputs = {
       },
       artifacts: { type: "object" },
       resume_required: { type: "boolean" },
+      orchestration: {
+        type: ["object", "null"],
+        required: ["mode", "team_requested", "requested_by", "requested_at"],
+        properties: {
+          mode: { const: "pm-led" },
+          team_requested: { type: "boolean" },
+          requested_by: { type: ["string", "null"] },
+          requested_at: { type: ["string", "null"] },
+        },
+      },
     },
     [
       "status",

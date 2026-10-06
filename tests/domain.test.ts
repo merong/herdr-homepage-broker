@@ -115,8 +115,14 @@ test("T19 wrong role, duplicate event, out of order, completed task cannot regre
     );
     report(f.r, {
       ...payload,
-      event_id: "e3",
+      event_id: "team",
       sequence: 2,
+      kind: "team-create",
+    });
+    report(f.r, {
+      ...payload,
+      event_id: "e3",
+      sequence: 3,
       kind: "plan",
       tasks: [
         {
@@ -129,7 +135,7 @@ test("T19 wrong role, duplicate event, out of order, completed task cannot regre
       ],
     });
     assert.throws(
-      () => report(f.r, { ...payload, event_id: "e4", sequence: 3 }),
+      () => report(f.r, { ...payload, event_id: "e4", sequence: 4 }),
       /no longer/,
     );
   } finally {

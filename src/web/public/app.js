@@ -281,6 +281,16 @@ function projectDetail(p) {
     root.append(info);
   }
   root.append(section("담당 에이전트", "Claude Opus 5.5 · High"));
+  if (p.orchestration?.mode === "pm-led")
+    root.append(
+      el(
+        "p",
+        "help",
+        p.orchestration.team_requested
+          ? "PM 오케스트레이터가 개발자·디자이너 생성을 요청했습니다."
+          : "PM 오케스트레이터가 문서를 확인하고 개발자·디자이너를 구성합니다.",
+      ),
+    );
   const agents = el("div", "agents");
   for (const a of p.agents) {
     const card = el("article", "agent"),
@@ -300,7 +310,16 @@ function projectDetail(p) {
       ),
     );
     const task = p.tasks.find((t) => t.task_id === a.task_id);
-    if (a.waiting_reason) card.append(el("p", "", a.waiting_reason));
+    if (a.waiting_reason)
+      card.append(
+        el(
+          "p",
+          "",
+          { orchestrator: "PM의 생성 요청 대기", dependency: "다음 작업 대기" }[
+            a.waiting_reason
+          ] ?? a.waiting_reason,
+        ),
+      );
     if (task) card.append(el("p", "task-name", task.title));
     agents.append(card);
   }

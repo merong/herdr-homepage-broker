@@ -370,6 +370,10 @@
       ),
     );
     section(
+      "PM 오케스트레이터와 에이전트 구성",
+      "새 실행은 PM만 시작합니다. PM이 문서를 읽고 team-create 보고를 보내면 브로커가 같은 homepage 프로젝트에 개발자와 디자이너를 각각 하나씩 생성합니다. PM의 현재 작업 권한을 검증하며, 생성 요청 전에는 계획 제출을 허용하지 않습니다. 총 3개 역할을 넘기거나 작업자가 다른 에이전트를 만드는 요청은 허용하지 않습니다. 기존 실행의 팀은 그대로 유지하며 다음 실행부터 적용합니다.",
+    );
+    section(
       "3. 상태와 사용자 입력",
       "진행 상태는 broker-checkpoint.json을 기반으로 갱신합니다. 프로젝트의 JSON 상태 확인은 meta/task/agents 파일의 revision·run 일치를 검사합니다. queued=접수 대기, running=제작 중, waiting_input=입력 필요, paused=명시적 재개 필요, review_pending=사용자 검토 대기입니다. 에이전트 유휴는 제작 완료와 다릅니다. 질문 답변은 answer --file, 문서 갱신은 apply-inputs로 전달합니다.",
     );

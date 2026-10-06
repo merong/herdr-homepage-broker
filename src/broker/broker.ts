@@ -32,6 +32,7 @@ import {
   unknown,
   authenticate,
   validateReplacement,
+  requiredAgents,
 } from "../domain/engine.js";
 import { Herdr, HerdrRejected, Lines, Observer } from "../herdr/transport.js";
 import { rolePrompt, claudeArgs, assignment } from "../agents/prompts.js";
@@ -462,6 +463,7 @@ export class Broker {
           slot: r.slot,
           resume_required: r.resume_required,
           execution_requested: !!r.execution_requested,
+          orchestration: r.orchestration ?? null,
           reason: r.reason,
           input_required: r.questions.some((q) => q.status !== "answered"),
           input_requests: r.questions,
@@ -620,7 +622,7 @@ export class Broker {
         },
       );
     }
-    for (const a of r.agents) {
+    for (const a of requiredAgents(r)) {
       if (!a.herdr.pane_id) {
         await this.operation(
           p,
@@ -649,7 +651,7 @@ export class Broker {
         );
       }
     }
-    for (const a of r.agents) {
+    for (const a of requiredAgents(r)) {
       if (a.herdr.started) continue;
       const prompt = await rolePrompt(this.config, p, r, a);
       const systemFile = path.join(
@@ -670,6 +672,8 @@ export class Broker {
           pane_id: a.herdr.pane_id,
           model: a.model,
           effort: a.effort,
+          requested_by:
+            a.role === "pm" ? null : (r.orchestration?.requested_by ?? null),
         },
         () =>
           this.herdr.cli([
@@ -702,6 +706,8 @@ export class Broker {
             fresh: true,
             observed_at: now(),
           };
+          a.status = "ready";
+          a.waiting_reason = null;
         },
       );
     }
@@ -845,7 +851,11 @@ export class Broker {
       if (terminal.has(r.status) || r.resume_required || !r.slot) continue;
       if (r.media.some((m) => ["pending", "running"].includes(m.status)))
         await this.pollMedia(p, r);
-      if (r.status === "starting") {
+      if (
+        r.status === "starting" ||
+        (["running", "retrying"].includes(r.status) &&
+          requiredAgents(r).some((a) => !a.herdr.started))
+      ) {
         try {
           await this.setup(p, r);
         } catch (e: any) {
@@ -933,6 +943,7 @@ export class Broker {
         )
           continue;
         const a = r.agents.find((a) => a.role === t.role)!;
+        if (!a.herdr.started) continue;
         if (t.attempt === 0 || t.status === "retrying") t.attempt++;
         t.assignment_id = randomUUID();
         t.status = "running";
@@ -970,7 +981,7 @@ export class Broker {
         .sort((a, b) => a.r.queue_seq - b.r.queue_seq)) {
         if (slots >= 2) break;
         r.slot = true;
-        r.status = r.agents.every((a) => a.herdr.started)
+        r.status = requiredAgents(r).every((a) => a.herdr.started)
           ? "running"
           : "starting";
         slots++;

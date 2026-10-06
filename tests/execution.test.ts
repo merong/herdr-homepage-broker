@@ -5,7 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Broker } from "../src/broker/broker.js";
 import { current } from "../src/domain/engine.js";
-import { fixture, FakeHerdr } from "./helpers.js";
+import { fixture, pmReport, FakeHerdr, cmd } from "./helpers.js";
 async function setup(ready: boolean | "native" = true) {
   const f = await fixture();
   f.config.autoStart = false;
@@ -90,7 +90,7 @@ test("E01 web execution readiness reports disabled configuration and refuses dis
     await f.close();
   }
 });
-test("E02 real HTTP to CLI start deduplicates and scheduler still creates only three fake agent panes", async () => {
+test("E02 real HTTP to CLI start deduplicates and starts only the PM", async () => {
   const f = await setup();
   try {
     const before = f.b.status().projects[0],
@@ -124,7 +124,7 @@ test("E02 real HTTP to CLI start deduplicates and scheduler still creates only t
     );
     assert.equal(
       f.h.calls.filter((c) => c[0] === "agent" && c[1] === "start").length,
-      3,
+      1,
     );
     const calls = f.h.calls.length;
     assert.equal(
@@ -275,7 +275,7 @@ test("E07 installed Claude MCP needs no broker mapping and only the requested pr
     const starts = f.h.calls.filter(
       (c) => c[0] === "agent" && c[1] === "start",
     );
-    assert.equal(starts.length, 3);
+    assert.equal(starts.length, 1);
     for (const args of starts) {
       assert.equal(args.includes("--strict-mcp-config"), false);
       assert.equal(args.includes("--mcp-config"), false);
@@ -361,5 +361,120 @@ test("E09 status remains readable from committed JSON while agent startup is wai
     release();
     await tick;
     await f.close();
+  }
+});
+
+test("E10 PM authority gates team creation, plan, replay and restart", async () => {
+  const f = await setup("native");
+  try {
+    await f.send(f.input());
+    await f.b.tick();
+    await f.b.tick();
+    await f.b.tick();
+    let p = f.b.store.state.projects.A;
+    let r = current(p);
+    assert.equal(f.h.panes.length, 1);
+    assert.ok(
+      r.agents
+        .slice(1)
+        .every((a) => !a.herdr.pane_id && a.waiting_reason === "orchestrator"),
+    );
+    const plan = [
+      {
+        task_id: "build",
+        role: "developer",
+        title: "Build",
+        depends_on: [],
+        writes: ["app/"],
+      },
+    ];
+    const before = JSON.stringify(f.b.store.state);
+    await assert.rejects(
+      () => f.b.handle(pmReport(p, "plan", { tasks: plan })),
+      (e: any) => e.code === "team_required",
+    );
+    await assert.rejects(
+      () =>
+        f.b.handle(
+          pmReport(p, "team-create", {
+            agent_id: r.agents[1].agent_id,
+            token: r.agents[1].token,
+          }),
+        ),
+      /assignment/,
+    );
+    await assert.rejects(
+      () => f.b.handle(pmReport(p, "team-create", { roles: ["qa"] })),
+      /additional properties/,
+    );
+    await assert.rejects(
+      () => f.b.handle(pmReport(p, "team-create", { token: "wrong" })),
+      /capability/,
+    );
+    assert.equal(JSON.stringify(f.b.store.state), before);
+    const create = pmReport(p, "team-create");
+    await f.b.handle(create);
+    await f.b.handle(create);
+    assert.equal(f.h.panes.length, 1, "receipt commits before provisioning");
+    r = current(f.b.store.state.projects.A);
+    assert.equal(r.orchestration!.requested_by, r.agents[0].agent_id);
+    assert.equal(
+      r.tasks[0].status,
+      "running",
+      "creating team does not finish PM planning",
+    );
+    // Restart after durable intent, before any worker is created.
+    await f.b.close();
+    const restarted = new Broker(f.config, f.h);
+    f.b = restarted;
+    await f.b.start(false);
+    clearInterval(f.b.timer);
+    p = f.b.store.state.projects.A;
+    await f.b.handle(cmd("resume", p));
+    await f.b.tick();
+    await f.b.tick();
+    assert.equal(f.h.panes.length, 3);
+    const starts = f.h.calls.filter(
+      (c) => c[0] === "agent" && c[1] === "start",
+    );
+    assert.equal(
+      starts.length,
+      3,
+      "restart never creates a second PM or duplicate worker",
+    );
+    await f.b.handle(create);
+    await f.b.tick(); // Resume assigns a fresh PM planning assignment.
+    p = f.b.store.state.projects.A;
+    await f.b.handle(pmReport(p, "plan", { tasks: plan }));
+    await f.b.tick();
+    assert.equal(f.h.panes.length, 3);
+    r = current(f.b.store.state.projects.A);
+    assert.equal(r.tasks[1].status, "running");
+    const meta = JSON.parse(
+      await fs.readFile(path.join(p.directory, "meta.json"), "utf8"),
+    );
+    assert.equal(meta.orchestration.team_requested, true);
+    assert.match(
+      await fs.readFile(
+        path.join(
+          p.directory,
+          ".herdr/runs",
+          r.run_id,
+          "homepage-orchestration.md",
+        ),
+        "utf8",
+      ),
+      /MAIN ORCHESTRATOR/,
+    );
+    assert.match(
+      await fs.readFile(
+        path.join(p.directory, ".herdr/runs", r.run_id, "developer-system.md"),
+        "utf8",
+      ),
+      /Never create agents/,
+    );
+  } finally {
+    await f.b.close();
+    await fs.rm(f.root, { recursive: true, force: true });
   }
 });

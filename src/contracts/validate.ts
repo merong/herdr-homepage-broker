@@ -92,7 +92,16 @@ export const payloadSchemas: Record<string, any> = {
       attempt: { type: "integer", minimum: 1 },
       event_id: string,
       sequence: { type: "integer", minimum: 1 },
-      kind: { enum: ["plan", "progress", "completed", "failed", "question"] },
+      kind: {
+        enum: [
+          "team-create",
+          "plan",
+          "progress",
+          "completed",
+          "failed",
+          "question",
+        ],
+      },
       tasks: { type: "array" },
       result: string,
       question_kind: {
@@ -187,6 +196,16 @@ export function checkpoint(value: any): Checkpoint {
       )
         fail("invalid_checkpoint", "Invalid status/revision");
       if (r.run_id === p.current_run_id && r.slot) slots++;
+      if (
+        r.orchestration !== undefined &&
+        (r.orchestration?.mode !== "pm-led" ||
+          typeof r.orchestration.team_requested !== "boolean" ||
+          (r.orchestration.team_requested &&
+            (r.orchestration.requested_by !==
+              r.agents?.find((a: any) => a.role === "pm")?.agent_id ||
+              typeof r.orchestration.requested_at !== "string")))
+      )
+        fail("invalid_checkpoint", "Invalid orchestration authority");
       if (
         r.herdr?.session_name !== "homepage" ||
         !Array.isArray(r.agents) ||

@@ -512,6 +512,7 @@
               },
               "kind": {
                 "enum": [
+                  "team-create",
                   "plan",
                   "progress",
                   "completed",

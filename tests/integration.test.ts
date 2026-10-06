@@ -6,7 +6,7 @@ import net from "node:net";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import { fixture, cmd, FakeHerdr } from "./helpers.js";
+import { fixture, cmd, pmReport, FakeHerdr } from "./helpers.js";
 import { Broker } from "../src/broker/broker.js";
 import { request } from "../src/broker/client.js";
 import { current, makeTask, report } from "../src/domain/engine.js";
@@ -152,7 +152,7 @@ test("T11 byte fragmented UTF-8, multiplexed IDs, oversized frames and early clo
     await fs.rm(f.root, { recursive: true });
   }
 });
-test("T14/T31 scheduler reserves only two projects, third queued, with six role panes", async () => {
+test("T14/T31 two PMs bootstrap, each requests its team, third project remains queued", async () => {
   const f = await setup();
   try {
     for (const id of ["A", "B", "C"]) await f.b.handle(f.submit(id));
@@ -168,6 +168,10 @@ test("T14/T31 scheduler reserves only two projects, third queued, with six role 
     await f.b.tick();
     const rs = Object.values(f.b.store.state.projects).map(current);
     assert.equal(rs[2].status, "queued");
+    assert.equal(f.h.panes.length, 2, "only PMs exist before their requests");
+    for (const id of ["A", "B"])
+      await f.b.handle(pmReport(f.b.store.state.projects[id], "team-create"));
+    await f.b.tick();
     assert.equal(f.h.calls.filter((c) => c[0] === "workspace").length, 2);
     assert.equal(
       f.h.calls.filter((c) => c[0] === "agent" && c[1] === "start").length,
@@ -177,7 +181,9 @@ test("T14/T31 scheduler reserves only two projects, third queued, with six role 
       f.h.calls.filter((c) => c[0] === "agent" && c[1] === "prompt").length,
       2,
     );
-    for (const r of rs.slice(0, 2))
+    for (const r of Object.values(f.b.store.state.projects)
+      .map(current)
+      .slice(0, 2))
       for (const a of r.agents) {
         assert.equal(a.herdr.session_name, "homepage");
         assert.ok(a.herdr.terminal_id);
@@ -218,6 +224,7 @@ test("T15/T16 partial input waiting keeps independent task moving; full wait rel
         terminal_id: a.role,
         workspace_id: "w",
         session_name: "homepage",
+        started: true,
       };
       f.h.panes.push({ ...a.herdr, agent_status: "idle" });
     }
@@ -242,6 +249,9 @@ test("T21 cancellation closes only recorded matching panes and cannot be revived
     f.config.allowExecution = true;
     f.b.mcp = { connect: async () => {}, close: () => {} } as any;
     await f.b.tick();
+    await f.b.tick();
+    await f.b.tick();
+    await f.b.handle(pmReport(f.b.store.state.projects.A, "team-create"));
     await f.b.tick();
     const p = f.b.store.state.projects.A;
     f.h.panes.push({
@@ -520,6 +530,9 @@ test("T29 replacement closes old three agents before any new role starts", async
     f.b.mcp = { connect: async () => {}, close: () => {} } as any;
     await f.b.tick();
     await f.b.tick();
+    await f.b.tick();
+    await f.b.handle(pmReport(f.b.store.state.projects.A, "team-create"));
+    await f.b.tick();
     const p = f.b.store.state.projects.A;
     current(p).status = "review_pending";
     current(p).slot = false;
@@ -535,7 +548,11 @@ test("T29 replacement closes old three agents before any new role starts", async
     );
     await f.b.tick();
     await f.b.tick();
-    assert.equal(f.h.panes.length, 3);
+    assert.equal(
+      f.h.panes.length,
+      1,
+      "replacement must bootstrap through PM again",
+    );
   } finally {
     await f.close();
   }
