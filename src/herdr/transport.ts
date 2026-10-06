@@ -116,7 +116,11 @@ export class Herdr {
       try {
         const error = JSON.parse(e.stderr || e.stdout).error;
         if (error?.code && error?.message) {
-          if (error.code === "invalid_agent_name")
+          if (
+            ["invalid_agent_name", "invalid_agent_argument"].includes(
+              error.code,
+            )
+          )
             throw new HerdrRejected(error.code, error.message);
           throw new Fault(error.code, error.message);
         }

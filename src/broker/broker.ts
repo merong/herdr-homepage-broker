@@ -652,6 +652,13 @@ export class Broker {
     for (const a of r.agents) {
       if (a.herdr.started) continue;
       const prompt = await rolePrompt(this.config, p, r, a);
+      const systemFile = path.join(
+        p.directory,
+        ".herdr/runs",
+        r.run_id,
+        `${a.role}-system.md`,
+      );
+      await atomic(systemFile, prompt);
       const name = `hp-${hash(a.agent_id).slice(0, 12)}-${a.role}`;
       await this.operation(
         p,
@@ -676,7 +683,7 @@ export class Broker {
             "--timeout",
             "30000",
             "--",
-            ...claudeArgs(prompt, !this.config.mcp),
+            ...claudeArgs(systemFile, !this.config.mcp),
           ]),
         (v) => {
           if (

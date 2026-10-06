@@ -280,7 +280,13 @@ test("E07 installed Claude MCP needs no broker mapping and only the requested pr
       assert.equal(args.includes("--strict-mcp-config"), false);
       assert.equal(args.includes("--mcp-config"), false);
       assert.ok(args.includes("--disable-slash-commands"));
-      assert.equal(args[args.indexOf("--setting-sources") + 1], "");
+      assert.ok(args.includes("--setting-sources="));
+      assert.ok(args.every((arg) => arg.length > 0 && !/[\n\r\x00]/.test(arg)));
+      const systemFile = args[args.indexOf("--append-system-prompt-file") + 1];
+      assert.match(
+        await fs.readFile(systemFile, "utf8"),
+        /Higgsfield MCP already installed/,
+      );
       assert.equal(args[args.indexOf("--model") + 1], "claude-opus-5-5");
       assert.equal(args[args.indexOf("--effort") + 1], "high");
     }

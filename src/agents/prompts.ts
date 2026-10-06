@@ -66,7 +66,7 @@ export async function assignment(
   );
   return `Task ${t.task_id}: ${t.title}\nAssignment file: ${file}. Read it and the immutable inputs. Write ownership: ${t.writes.join(", ") || "planning only"}. The assets/ and reports/ paths are relative to ${path.join(p.directory, ".herdr/runs", r.run_id)}. Deliver report through CLI; never edit the state files. Relevant user answers: ${JSON.stringify(r.questions.filter((q) => q.task_id === t.task_id && q.status === "answered").map((q) => ({ question: q.question, response: q.response })))}. Prior result: ${t.result ?? "none"}`;
 }
-export const claudeArgs = (system: string, installedMcp = false) => [
+export const claudeArgs = (systemFile: string, installedMcp = false) => [
   "--model",
   "claude-opus-5-5",
   "--effort",
@@ -75,10 +75,9 @@ export const claudeArgs = (system: string, installedMcp = false) => [
   ...(installedMcp
     ? []
     : ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}']),
-  "--setting-sources",
-  "",
+  "--setting-sources=",
   "--disallowedTools",
   "Agent,Task,Skill",
-  "--append-system-prompt",
-  system,
+  "--append-system-prompt-file",
+  systemFile,
 ];
