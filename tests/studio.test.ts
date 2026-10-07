@@ -6,7 +6,9 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import { Broker } from "../src/broker/broker.js";
 import { current } from "../src/domain/engine.js";
 import { claudeArgs } from "../src/agents/prompts.js";
+import { nativePrompt } from "../src/agents/native.js";
 import {
+  lookScript,
   studio,
   studioDoctor,
   studioPlugin,
@@ -63,7 +65,7 @@ async function withClaudeRoot<T>(root: string, fn: () => Promise<T>) {
   }
 }
 
-test("S01 homepage-studio plugin ships its manifest, three bounded helpers and the page check", async () => {
+test("S01 homepage-studio plugin ships the lean skill, vendored frontend-design and look.py without helpers", async () => {
   const manifest = JSON.parse(
     await fs.readFile(
       path.join(repoPlugin, ".claude-plugin/plugin.json"),
@@ -73,36 +75,49 @@ test("S01 homepage-studio plugin ships its manifest, three bounded helpers and t
   assert.equal(manifest.name, "homepage-studio");
   assert.equal(typeof manifest.version, "string");
   assert.equal((await studioPlugin()).version, manifest.version);
-  const skills = {
-    developer: ["frontend-design", "korean-typography", "seo-basics"],
-    designer: ["asset-kit", "frontend-design"],
-    copywriter: ["korean-copywriting"],
-  };
-  for (const [role, uses] of Object.entries(skills)) {
-    const file = path.join(repoPlugin, "agents", `homepage-${role}.md`);
-    const text = await fs.readFile(file, "utf8");
-    assert.ok(Buffer.byteLength(text) < 2500, `${role} stays short`);
-    assert.match(
-      text,
-      new RegExp(
-        `^---\\nname: homepage-${role}\\ndescription: .+\\nmodel: inherit\\neffort: high\\n---\\n`,
-      ),
-    );
-    assert.match(text, /run guide path \(`homepage-orchestration\.md`\)/);
-    assert.match(text, /\*-assignment\.json/);
-    assert.match(text, /never submit broker commands/);
-    assert.match(text, /no Herdr panes, no separate model sessions/);
-    assert.match(text, /Preserve others' work/);
-    for (const skill of uses)
-      assert.ok(text.includes(`homepage-studio:${skill}`), `${role} ${skill}`);
-  }
-  assert.ok(
-    (
-      await fs.stat(
-        path.join(repoPlugin, "skills/quality-gate/scripts/check_page.py"),
-      )
-    ).isFile(),
+  assert.deepEqual((await fs.readdir(path.join(repoPlugin, "skills"))).sort(), [
+    "frontend-design",
+    "homepage-studio",
+  ]);
+  for (const gone of [
+    "agents",
+    "skills/asset-kit",
+    "skills/korean-copywriting",
+    "skills/korean-typography",
+    "skills/quality-gate",
+    "skills/seo-basics",
+  ])
+    await assert.rejects(fs.stat(path.join(repoPlugin, gone)), /ENOENT/);
+  const notices = await fs.readFile(
+    path.join(repoPlugin, "THIRD_PARTY_NOTICES.md"),
+    "utf8",
   );
+  for (const file of ["SKILL.md", "LICENSE.txt"])
+    assert.ok(
+      notices.includes(
+        hash(
+          await fs.readFile(
+            path.join(repoPlugin, "skills/frontend-design", file),
+          ),
+        ),
+      ),
+      `frontend-design ${file} stays byte for byte`,
+    );
+  const look = await fs.readFile(path.join(repoPlugin, lookScript), "utf8");
+  assert.match(look, /^#!\/usr\/bin\/env python3\n/);
+  assert.match(
+    look,
+    /Usage: python3 look\.py <url> <outdir> \[--reduced-motion\]/,
+  );
+  for (const output of [
+    "desktop.png",
+    "desktop-full.png",
+    "mobile.png",
+    "mobile-full.png",
+    "issues.json",
+  ])
+    assert.ok(look.includes(output), output);
+  assert.match(look, /reduced_motion="reduce"/);
 });
 
 test("S02 native PM launch adds --plugin-dir; pm-led launches stay unchanged", async () => {
@@ -125,11 +140,9 @@ test("S02 native PM launch adds --plugin-dir; pm-led launches stay unchanged", a
       ),
     );
     assert.equal(runtime.orchestration.plugin.path, studio.dir);
-    assert.deepEqual(runtime.orchestration.native_agents, [
-      "homepage-studio:homepage-developer",
-      "homepage-studio:homepage-designer",
-      "homepage-studio:homepage-copywriter",
-    ]);
+    assert.equal(runtime.orchestration.builder, "pm");
+    assert.equal(runtime.orchestration.native_agents, undefined);
+    assert.equal(runtime.orchestration.helper_limit, undefined);
   } finally {
     await native.close();
   }
@@ -178,10 +191,7 @@ test("S03 missing plugin blocks readiness and fails before any Herdr dispatch", 
         path.join(repoPlugin, "skills/homepage-studio/SKILL.md"),
         path.join(studio.dir, "skills/homepage-studio/SKILL.md"),
       );
-      for (const file of [
-        "skills/korean-copywriting/SKILL.md",
-        "skills/quality-gate/scripts/check_page.py",
-      ]) {
+      for (const file of ["skills/frontend-design/SKILL.md", lookScript]) {
         await fs.rm(path.join(studio.dir, file));
         await assert.rejects(studioPlugin(), (e: any) => {
           assert.equal(e.code, "studio_plugin_missing");
@@ -219,7 +229,7 @@ test("S03 missing plugin blocks readiness and fails before any Herdr dispatch", 
   }
 });
 
-test("S04 PM instructions route through homepage-studio with one quality gate and the media budget", async () => {
+test("S04 PM instructions: one builder, three tasks, the look loop and the media rule", async () => {
   const root = await fs.mkdtemp("/private/tmp/hp-claude-");
   const refs = path.join(root, "skills/higgsfield-websites/references");
   await fs.mkdir(refs, { recursive: true });
@@ -227,57 +237,96 @@ test("S04 PM instructions route through homepage-studio with one quality gate an
   try {
     const pm = await run.read("pm-instructions.md");
     const guide = await run.read("homepage-orchestration.md");
-    const guidePath = path.join(run.dir, "homepage-orchestration.md");
     assert.ok(pm.includes(guide), "PM instructions embed the shared guide");
     for (const gone of [
-      /Minimal final verification/,
-      /No separate QA role or repeated QA loops/,
+      /homepage-studio:homepage-(developer|designer|copywriter)/,
+      /quality-gate|check_page|auto-check|self-check/,
+      /stage order/,
+      /helper/i,
+      /hero video/,
       /Selected homepage skill excerpts/,
     ])
       assert.doesNotMatch(pm, gone);
     assert.match(pm, /Load skill homepage-studio:homepage-studio first/);
-    assert.match(guide, /follows its stage order and artifact paths/);
-    for (const agent of ["developer", "designer", "copywriter"])
-      assert.ok(pm.includes(`homepage-studio:homepage-${agent}`));
-    assert.ok(
-      pm.includes(
-        `include the run guide path ${guidePath} in every delegation`,
-      ),
+    assert.match(guide, /homepage-studio:frontend-design for visual craft/);
+    assert.match(
+      guide,
+      /design, write the copy, generate images and build the site yourself in this one session/,
     );
-    assert.match(guide, /At most two helpers at a time/);
-    const script = path.join(
-      studio.dir,
-      "skills/quality-gate/scripts/check_page.py",
-    );
-    assert.ok(
-      guide.includes(
-        `python3 ${script} <preview URL> ${run.dir}/reports/auto-check`,
-      ),
-    );
-    assert.ok(guide.includes(`resolve under ${studio.dir}/skills/<skill>/`));
-    assert.match(guide, /homepage-studio:quality-gate once/);
-    assert.match(guide, /reports\/self-check\.md, then at most one fix pass/);
-    assert.ok(
-      guide.includes(
-        `close task may run the same script once more into ${run.dir}/reports/auto-check/final as final evidence only; it starts no further fixes`,
-      ),
+    assert.match(guide, /Do not hand design, copy or build work to subagents/);
+    assert.match(
+      guide,
+      /only to run independent image generations in parallel: you write every prompt and review every result/,
     );
     assert.match(
       guide,
-      /Apart from that single final capture: no separate QA agent and no repeated check or fix loops/,
+      /Wait for every subagent to finish before a completed, failed or question report/,
     );
-    assert.match(guide, /PRD states explicit image or video counts/);
-    assert.match(guide, /at most 12 images plus 1 hero video/);
-    assert.match(guide, /logo draft when no logo is supplied/);
-    assert.match(guide, /one image owner/);
-    assert.match(guide, /media-receipts\.json/);
-    assert.match(guide, /resubmit an unknown job outcome/);
+    const look = path.join(studio.dir, lookScript);
+    assert.ok(
+      guide.includes(
+        `python3 ${look} <preview URL> ${run.dir}/reports/look/<round>`,
+      ),
+    );
+    assert.match(guide, /first-screen: at most 2 rounds/);
+    assert.match(guide, /build-out: at most 3 rounds/);
+    assert.ok(
+      guide.includes(
+        `one final run into ${run.dir}/reports/look/final as delivery evidence`,
+      ),
+    );
+    assert.match(guide, /No separate QA agent/);
+    assert.match(guide, /Playwright is missing, do not install it/);
+    assert.match(
+      guide,
+      /Start the preview in the first-screen task as soon as the first screen renders/,
+    );
+    assert.ok(guide.includes(`resolve under ${studio.dir}/skills/<skill>/`));
+    assert.match(
+      guide,
+      /Explicit image or video counts in the PRD or design win/,
+    );
+    assert.match(
+      guide,
+      /placement and job on the page are decided, at most 12/,
+    );
+    assert.match(guide, /no video unless the PRD or design asks for one/);
+    assert.ok(
+      guide.includes(
+        `${run.dir}/assets/media-receipts.json (file, purpose, placement, model, job_id, status, sha256)`,
+      ),
+    );
+    assert.match(guide, /resubmit a job whose outcome is unknown/);
+    assert.match(guide, /installed\/authenticated Higgsfield MCP directly/);
+    assert.doesNotMatch(guide, /media-request/);
     assert.ok(guide.includes(`- higgsfield-websites: ${refs}`));
     assert.match(guide, /- higgsfield-brandkit: not installed/);
+    assert.match(pm, /Do not send team-create/);
     assert.match(pm, /strictly increasing sequence/);
     assert.match(pm, /Kinds: plan \(initial plan task only\)/);
+    assert.match(pm, /\(direction, first-screen, build-out\)/);
+    assert.match(
+      pm,
+      /any task may write under app\/, assets\/ or reports\/; roles are display labels/,
+    );
+    assert.match(pm, /one at a time; do only the current assignment/);
+    assert.match(
+      pm,
+      /direction set, image job accepted\/completed with the actual job ID, first screen visible, each look round result, preview ready/,
+    );
     assert.match(pm, /PM alone starts preview: preview-start with argv/);
     assert.match(pm, /Broker decides overall review_pending/);
+    const r = current(run.p);
+    const broker = await nativePrompt(
+      { ...run.f.config, mcp: {} as any },
+      run.p,
+      r,
+      "",
+      await studioPlugin(),
+    );
+    assert.match(broker, /only PM calls media-request/);
+    assert.match(broker, /After acceptance do not poll/);
+    assert.doesNotMatch(broker, /installed\/authenticated Higgsfield MCP/);
   } finally {
     await run.close();
     await fs.rm(root, { recursive: true, force: true });
@@ -513,44 +562,80 @@ test("S07 generated projection schemas accept native and pm-led runs and reject 
   assert.ok(meta({ ...nativeFiles["meta.json"], orchestration: null }));
 });
 
-test("S08 missing studio tools warn in doctor and readiness without blocking execution", async () => {
+test("S08 look.py tools are resolved like the PM pane's login shell and only warn", async () => {
   const bin = await fs.mkdtemp("/private/tmp/hp-bin-");
-  const stub = async (name: string, script: string, mode = 0o755) => {
-    await fs.writeFile(path.join(bin, name), `#!/bin/sh\n${script}\n`);
-    await fs.chmod(path.join(bin, name), mode);
+  const login = path.join(bin, "login");
+  await fs.mkdir(login);
+  const stub = async (dir: string, name: string, script: string) => {
+    await fs.writeFile(path.join(dir, name), `#!/bin/sh\n${script}\n`);
+    await fs.chmod(path.join(dir, name), 0o755);
   };
   const probe = path.join(bin, "python-args");
   try {
-    for (const name of ["ffmpeg", "ffprobe", "cwebp"])
-      await stub(name, "exit 0");
-    await stub("magick", "exit 0", 0o644);
-    await stub("python3", `printf '%s ' "$@" > ${probe}; exit 1`);
+    await stub(bin, "python3", `printf '%s ' "$@" > ${probe}; exit 1`);
     const partial = await studioTools({ PATH: bin });
-    assert.deepEqual(partial.missing, [
-      "python3 playwright",
-      "avifenc",
-      "magick",
-      "rsvg-convert",
-      "pyftsubset",
-    ]);
+    assert.equal(partial.resolved_by, "path");
+    assert.equal(partial.python3, path.join(bin, "python3"));
+    assert.deepEqual(partial.missing, ["python3 playwright"]);
+    assert.deepEqual(partial.optional_missing, ["cwebp"]);
     assert.equal(
       await fs.readFile(probe, "utf8"),
       "-c import playwright.sync_api ",
     );
     assert.match(
       partial.warning!,
-      /^homepage-studio 보조 도구가 없습니다: python3 playwright, avifenc, magick, rsvg-convert, pyftsubset\. 실행은 막지 않지만/,
+      /^homepage-studio 보조 도구가 없습니다: python3 playwright\. 브로커 PATH에서 확인한 python3: .+\. PM pane의 로그인 셸 환경과 결과가 다를 수 있습니다\. 실행은 막지 않지만/,
     );
-    assert.deepEqual((await studioTools({ PATH: "" })).missing.length, 8);
-    await stub("python3", "exit 0");
-    for (const name of ["avifenc", "magick", "rsvg-convert", "pyftsubset"])
-      await stub(name, "exit 0");
-    const complete = await studioDoctor({ PATH: bin });
-    assert.deepEqual(complete.tools, { missing: [], warning: null });
+    const none = await studioTools({ PATH: "" });
+    assert.equal(none.python3, null);
+    assert.deepEqual(none.missing, ["python3 playwright"]);
+
+    // A login profile that puts another python3 (with Playwright) first wins.
+    await stub(login, "python3", "exit 0");
+    await stub(login, "cwebp", "exit 0");
+    const shell = path.join(bin, "shell");
+    await stub(
+      bin,
+      "shell",
+      `[ "$1 $2 $3" = "-l -i -c" ] || exit 9\nprintf 'profile noise'\nPATH=${login}:$PATH exec /bin/sh -c "$4"`,
+    );
+    assert.deepEqual(
+      await studioTools({ PATH: bin, SHELL: shell, HOME: bin }),
+      {
+        python3: path.join(login, "python3"),
+        resolved_by: "login-shell",
+        missing: [],
+        optional_missing: [],
+        warning: null,
+      },
+    );
+    await stub(login, "python3", "exit 1");
+    const noPlaywright = await studioTools({
+      PATH: bin,
+      SHELL: shell,
+      HOME: bin,
+    });
+    assert.ok(
+      noPlaywright.warning!.includes(
+        `PM pane과 같은 로그인 셸(${shell})에서 확인한 python3: ${path.join(login, "python3")}.`,
+      ),
+    );
+    await stub(bin, "broken-shell", "exit 1");
+    const fallback = await studioTools({
+      PATH: bin,
+      SHELL: path.join(bin, "broken-shell"),
+    });
+    assert.equal(fallback.resolved_by, "path");
+    assert.equal(fallback.python3, path.join(bin, "python3"));
+
+    await stub(login, "python3", "exit 0");
+    const complete = await studioDoctor({ PATH: login });
+    assert.deepEqual(complete.tools.missing, []);
+    assert.deepEqual(complete.tools.optional_missing, []);
+    assert.equal(complete.tools.warning, null);
     assert.equal(complete.plugin.available, true);
     assert.equal(complete.plugin.name, "homepage-studio");
 
-    await fs.rm(path.join(bin, "avifenc"));
     const f = await fixture();
     f.config.allowExecution = true;
     f.config.autoStart = false;
@@ -572,7 +657,10 @@ test("S08 missing studio tools warn in doctor and readiness without blocking exe
         ready.warnings.map((w: any) => w.code),
         ["studio_tools_missing"],
       );
-      assert.match(ready.warnings[0].detail, /보조 도구가 없습니다: avifenc\./);
+      assert.match(
+        ready.warnings[0].detail,
+        /보조 도구가 없습니다: python3 playwright\./,
+      );
     } finally {
       process.env.PATH = before;
       await b.close();

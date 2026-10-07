@@ -524,7 +524,7 @@ test("E11 native PM uses file bootstrap, owns all logical tasks and survives res
     await assert.rejects(
       () => fs.stat(path.join(p.directory, ".claude/agents")),
       /ENOENT/,
-      "helpers come from the plugin, not project files",
+      "native runs write no project agent files",
     );
     await assert.rejects(
       () => f.b.handle(pmReport(p, "team-create")),
@@ -534,17 +534,17 @@ test("E11 native PM uses file bootstrap, owns all logical tasks and survives res
       pmReport(p, "plan", {
         tasks: [
           {
-            task_id: "design",
-            role: "designer",
-            title: "Image",
-            writes: ["assets/"],
+            task_id: "direction",
+            role: "pm",
+            title: "Direction",
+            writes: ["reports/direction.md"],
             depends_on: [],
           },
           {
-            task_id: "build",
+            task_id: "first-screen",
             role: "developer",
-            title: "Build",
-            writes: ["app/"],
+            title: "First screen",
+            writes: ["app/", "assets/", "reports/look/"],
             depends_on: [],
           },
         ],
@@ -552,7 +552,7 @@ test("E11 native PM uses file bootstrap, owns all logical tasks and survives res
     );
     await f.b.tick();
     r = current(f.b.store.state.projects.A);
-    assert.equal(r.agents[0].task_id, "design");
+    assert.equal(r.agents[0].task_id, "direction");
     assert.equal(r.tasks.filter((t) => t.status === "running").length, 1);
     const oldAssignment = r.tasks[1].assignment_id;
     await f.b.close();
@@ -584,18 +584,18 @@ test("E11 native PM uses file bootstrap, owns all logical tasks and survives res
       );
     };
     await sendTask("progress", {
-      result: "homepage-designer completed its image handoff",
+      result: "direction set",
     });
     const ui = await (await fetch(f.b.dashboard!.url + "/api/status")).json();
     assert.equal(ui.projects[0].agents.length, 1);
-    assert.match(ui.projects[0].tasks[1].result, /homepage-designer/);
-    await sendTask("completed", { result: "design ready" });
+    assert.match(ui.projects[0].tasks[1].result, /direction set/);
+    await sendTask("completed", { result: "direction ready" });
     await f.b.tick();
     assert.equal(
       current(f.b.store.state.projects.A).agents[0].task_id,
-      "build",
+      "first-screen",
     );
-    await sendTask("completed", { result: "source ready" });
+    await sendTask("completed", { result: "first screen ready" });
     await f.b.tick();
     assert.equal(
       f.h.calls.filter((c) => c[0] === "agent" && c[1] === "start").length,

@@ -29,7 +29,7 @@ export async function board(
   const render = () => {
     if (closed) return;
     const lines = [
-      "HOMEPAGE  |  최대 2개 프로젝트 · 프로젝트당 PM 1명 · Claude 내부 에이전트",
+      "HOMEPAGE  |  최대 2개 프로젝트 · 프로젝트당 PM 1명 · PM 직접 제작",
     ];
     if (connectionError) {
       lines.push(

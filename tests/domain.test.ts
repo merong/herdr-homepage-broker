@@ -236,6 +236,132 @@ test("T23/T30 rejects extra roles, source boundary, cycles; serializes overlappi
   ])
     assert.throws(() => validatePlan(plan));
 });
+const studioPlan = () => [
+  {
+    task_id: "direction",
+    role: "pm",
+    title: "방향 정하기",
+    depends_on: [],
+    writes: ["reports/direction.md"],
+  },
+  {
+    task_id: "first-screen",
+    role: "developer",
+    title: "첫 화면과 대표 섹션",
+    depends_on: ["direction"],
+    writes: ["app/", "assets/", "reports/look/"],
+  },
+  {
+    task_id: "build-out",
+    role: "developer",
+    title: "전체 페이지 완성",
+    depends_on: ["first-screen"],
+    writes: ["app/", "assets/", "reports/"],
+  },
+];
+test("T32 claude-native tasks may write any run root; pm-led and legacy keep role boundaries", () => {
+  const plan = studioPlan();
+  assert.deepEqual(
+    validatePlan(plan, "claude-native").map((t) => [t.role, t.writes]),
+    plan.map((t) => [t.role, t.writes]),
+  );
+  assert.deepEqual(
+    validatePlan(
+      [{ ...plan[0], role: "designer", writes: ["app/x", "reports/y"] }],
+      "claude-native",
+    )[0].writes,
+    ["app/x", "reports/y"],
+  );
+  for (const mode of ["pm-led", undefined] as const)
+    assert.throws(() => validatePlan(plan, mode), /outside assigned boundary/);
+  assert.equal(
+    validatePlan(
+      [
+        { ...plan[0], role: "designer", writes: ["assets/hero.png"] },
+        { ...plan[1], depends_on: [], role: "developer", writes: ["app/"] },
+      ],
+      "pm-led",
+    ).length,
+    2,
+  );
+  for (const writes of [
+    ["prd.md"],
+    ["/tmp/app/x"],
+    ["app/../prd.md"],
+    ["assets/../../meta.json"],
+    ["application/"],
+    ["app"],
+    [7],
+  ])
+    assert.throws(
+      () =>
+        validatePlan([{ ...plan[2], depends_on: [], writes }], "claude-native"),
+      /outside assigned boundary/,
+      JSON.stringify(writes),
+    );
+});
+test("T33 native PM plan with multi-root tasks is accepted and dispatched one at a time; pm-led rejects it", async () => {
+  const f = await project();
+  try {
+    const plan = (r: typeof f.r, sequence: number) => {
+      const a = r.agents[0],
+        t = r.tasks[0];
+      r.status = "running";
+      a.task_id = t.task_id;
+      t.status = "running";
+      t.attempt = 1;
+      t.assignment_id = "plan-1";
+      return report(r, {
+        agent_id: a.agent_id,
+        token: a.token,
+        task_id: t.task_id,
+        assignment_id: "plan-1",
+        attempt: 1,
+        event_id: randomUUID(),
+        sequence,
+        kind: "plan",
+        tasks: studioPlan(),
+      });
+    };
+    assert.equal(plan(f.r, 1).accepted, true);
+    assert.deepEqual(
+      readyTasks(f.r).map((t) => t.task_id),
+      ["direction"],
+    );
+    const [direction, first, build] = f.r.tasks.slice(1);
+    assert.equal(canAssign(f.r, direction), true);
+    direction.status = "completed";
+    assert.deepEqual(
+      readyTasks(f.r).map((t) => t.task_id),
+      ["first-screen"],
+    );
+    first.status = "running";
+    f.r.agents[0].task_id = first.task_id;
+    assert.equal(canAssign(f.r, build), false, "one PM, one assignment");
+    f.r.agents[0].task_id = null;
+    assert.equal(canAssign(f.r, build), false, "overlapping roots serialize");
+    first.status = "completed";
+    assert.equal(canAssign(f.r, build), true);
+    assert.equal(checkpoint(f.s), f.s);
+
+    const led = await project();
+    try {
+      legacyTeam(led.r);
+      led.r.orchestration = {
+        mode: "pm-led",
+        team_requested: true,
+        requested_by: led.r.agents[0].agent_id,
+        requested_at: new Date().toISOString(),
+      };
+      assert.throws(() => plan(led.r, 1), /outside assigned boundary/);
+      assert.equal(led.r.tasks.length, 1, "rejected plan adds no tasks");
+    } finally {
+      await fs.rm(led.root, { recursive: true });
+    }
+  } finally {
+    await fs.rm(f.root, { recursive: true });
+  }
+});
 test("T31 rejects other session/model/effort and plugin context", async () => {
   const f = await fixture();
   try {

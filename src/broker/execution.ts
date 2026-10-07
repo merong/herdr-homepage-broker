@@ -59,7 +59,7 @@ export async function executionReadiness(
     );
   }
   const mode = r.orchestration?.mode ?? "legacy";
-  // Missing helper tools are reported as warnings and never block execution.
+  // Missing optional studio tools are reported as warnings and never block execution.
   const warnings: { code: string; detail: string }[] = [];
   if (mode === "claude-native") {
     try {

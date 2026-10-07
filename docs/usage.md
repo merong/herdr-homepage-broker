@@ -4,7 +4,7 @@
 
 웹 UI에서 **제작 요청 → 샘플 요청 채우기**를 누릅니다. 고유 프로젝트 ID, PRD와 디자인 초안이 입력됩니다. 내용을 검토한 뒤 **프로젝트 초기화만** 또는 **초기화 후 homepage로 전송**을 선택합니다.
 
-초기화는 새 프로젝트 폴더에 `prd.md`, `design.md`, `homepage-init.json`, `homepage-request.json`, `app/`, `homepage-runtime.json`을 만듭니다. 실행 설정에는 세션·모델·PM 1명·Claude 내부 역할·스킬·MCP 방식이 자동 기록됩니다. 기존 폴더·수정된 문서를 덮어쓰지 않습니다. 브로커에 접수되면 `meta.json`, `task.json`, `agents.json`, `.herdr/runs/`가 추가됩니다. 초기화는 기존 프로젝트 삭제나 재설정이 아닙니다.
+초기화는 새 프로젝트 폴더에 `prd.md`, `design.md`, `homepage-init.json`, `homepage-request.json`, `app/`, `homepage-runtime.json`을 만듭니다. 실행 설정에는 세션·모델·PM 1명·작업 흐름(direction, first-screen, build-out)·스킬·MCP 방식이 자동 기록됩니다. 기존 폴더·수정된 문서를 덮어쓰지 않습니다. 브로커에 접수되면 `meta.json`, `task.json`, `agents.json`, `.herdr/runs/`가 추가됩니다. 초기화는 기존 프로젝트 삭제나 재설정이 아닙니다.
 
 웹 버튼 → 고정된 브로커 CLI subcommand → IPC 큐 접수 → 스케줄러의 Herdr CLI(`--session homepage`) 순서로 전달됩니다. HTTP에서 임의 shell 명령이나 에이전트 프롬프트를 실행하지 않습니다. 접수 후에는 queued로 대기하며, 프로젝트의 **제작 시작**을 눌러 실행합니다.
 
@@ -60,11 +60,11 @@ TUI 보드도 연결이 끊기면 마지막 수신 상태를 표시하고 같은
 1. **문서 준비**: 실행에 고정된 PRD/design 사본과 해시를 확인합니다.
 2. **플러그인 준비**: 브로커 저장소와 homepage 연결 등 플러그인의 기본 작동 상태를 확인합니다.
 
-초기화·접수·브로커 재시작 시 실행 구성을 자동 준비합니다. 신규 실행은 번들 homepage-studio 스킬을 로드하고 Higgsfield MCP 연결을 재사용하므로 별도 모델 실행 스위치나 stdio 도구 매핑을 입력할 필요가 없습니다. 기존에 명시한 사용자 설정은 유지합니다. 필수 번들 파일이 누락되면 재설치를 안내하며, 보조 도구 누락은 실행을 막지 않습니다. 실제 MCP 도구가 없거나 로그인이 필요하면 작업 중 입력 요청으로 알립니다.
+초기화·접수·브로커 재시작 시 실행 구성을 자동 준비합니다. 신규 실행은 번들 homepage-studio 스킬을 로드하고 Higgsfield MCP 연결을 재사용하므로 별도 모델 실행 스위치나 stdio 도구 매핑을 입력할 필요가 없습니다. 기존에 명시한 사용자 설정은 유지합니다. 필수 번들 파일이 누락되면 재설치를 안내하며, Python Playwright 누락은 경고만 하고 실행을 막지 않습니다. 실제 MCP 도구가 없거나 로그인이 필요하면 작업 중 입력 요청으로 알립니다.
 
 웹 요청은 `execute` CLI를 거쳐 현재 project/run에 적용됩니다. 시작을 요청한 프로젝트만 FIFO로 처리하며 최대 2개 슬롯이 차면 대기합니다. 요청 접수와 실제 모델 실행은 구분합니다. 미응답 질문·이미 종료된 run·불명확한 이전 실행은 기존 보호 규칙에 따라 거부하고, 설정 체크와 별개로 해당 사유를 표시합니다.
 
-기본 MCP 방식에서는 디자이너가 설치된 Higgsfield 도구를 사용하고 실행 폴더의 `assets/media-receipts.json`에 실제 job ID·상태·결과 경로를 남겨 작업 보고에 포함합니다. 명시적인 `mcp` 설정이 있으면 기존 broker stdio 제출·상태 조회 방식을 유지합니다. 실제 모델 인증이나 생성 결과는 사전 체크로 보장하지 않습니다.
+기본 MCP 방식에서는 PM이 설치된 Higgsfield 도구를 직접 사용하고 실행 폴더의 `assets/media-receipts.json`에 실제 job ID·상태·결과 경로를 남겨 작업 보고에 포함합니다. 명시적인 `mcp` 설정이 있으면 기존 broker stdio 제출·상태 조회 방식을 유지합니다. 실제 모델 인증이나 생성 결과는 사전 체크로 보장하지 않습니다.
 
 응답이 끊기면 **같은 요청으로 결과 확인**을 사용합니다. 같은 탭의 새로고침 후에도 요청 ID를 유지하며 중복 실행하지 않습니다. 기본값은 `allowExecution:true`, `autoStart:false`입니다. 관리자가 지정한 `allowExecution:false`는 유지하며 웹에서 우회하지 않습니다. 외부 큐를 자동으로 처리하려는 경우에만 `autoStart:true`를 선택합니다.
 
@@ -87,6 +87,20 @@ CLI 사전 점검은 `node dist/src/cli.js project readiness --project ID`입니
 
 웹 서버는 loopback에서만 동작합니다. 상태 읽기와 초기화·submit·시작/재개 작업을 HTTP로 노출하며 변경 요청은 같은 출처와 CSRF 토큰을 확인합니다. 답변·취소·피드백은 기존 CLI를 사용합니다. 이 웹 서버를 원격 공개용 REST 큐로 사용하지 않습니다.
 
+## PM이 화면을 보며 직접 만드는 3단계 흐름 (0.9.0)
+
+- 신규·피드백 run의 계획은 3개 작업입니다. **direction**(섹션 구성·이미지 목록·시각 방향을 `reports/direction.md` 한 장으로 정리) → **first-screen**(히어로와 대표 섹션 하나를 완성 수준으로 구현하고 미리보기 시작) → **build-out**(나머지 섹션·기능 구현과 최종 확인). 브로커는 이 작업을 같은 PM에게 하나씩 배정합니다.
+- PM이 디자인·카피·이미지 생성·구현을 한 세션에서 직접 진행합니다. 0.8.0의 helper 3개(`homepage-studio:homepage-developer`, `homepage-designer`, `homepage-copywriter`)와 korean-copywriting, korean-typography, asset-kit, quality-gate, seo-basics 스킬은 제거했습니다. 플러그인에는 `homepage-studio`, `frontend-design` 스킬과 `look.py`만 남습니다. Claude 서브에이전트는 이미지 여러 장을 병렬로 생성할 때만 사용하며, PM은 서브에이전트가 모두 끝난 뒤에 완료·실패·질문을 보고합니다.
+- **look.py**: `python3 <플러그인>/skills/homepage-studio/scripts/look.py <미리보기 주소> <실행 폴더>/reports/look/<회차> [--reduced-motion]`. 데스크톱 1440×900과 모바일 390×844 첫 화면(`desktop.png`, `mobile.png`), 전체 페이지(`desktop-full.png`, `mobile-full.png`), 읽기 쉬운 크기로 나눈 `parts/`, `issues.json`을 저장합니다. 전체 캡처 전에 끝까지 스크롤해 지연 로딩 이미지와 스크롤 효과를 깨운 뒤 맨 위로 돌아갑니다. `issues.json`에는 가로 넘침과 원인 요소, 콘솔 오류, 실패한 요청, 깨진 이미지, localhost 밖으로 나간 요청을 기록합니다. 문제가 있어도 종료 코드는 0이며, 페이지를 열지 못하거나 Playwright가 없을 때만 0이 아닌 코드와 함께 이유를 출력합니다. 127.0.0.1·localhost 주소만 받습니다.
+- 확인 횟수: first-screen에서 최대 2회, build-out에서 최대 3회 확인하고 마지막에 `reports/look/final`에 납품 증거를 1회 저장합니다. 별도 QA 에이전트는 없습니다.
+- 이미지·영상: PRD/design에 수량이 있으면 그대로 따릅니다. 없으면 페이지에서 배치와 역할이 정해진 이미지만 최대 12장 만듭니다. 영상은 요청이 있을 때만 만듭니다(기본 0개, 0.8.0의 히어로 영상 기본값은 없앴습니다). 생성 기록은 `assets/media-receipts.json`에 파일·용도·배치·모델·job ID·상태·sha256으로 남기며, 결과가 불명확한 작업은 다시 제출하지 않습니다.
+- 쓰기 경계: `claude-native` run은 작성자가 PM 하나이므로 역할과 관계없이 모든 작업이 `app/`, `assets/`, `reports/`에 쓸 수 있습니다. 경로 검증(상대 경로, `..` 금지, 세 루트 중 하나로 시작)은 그대로이며, `pm-led`와 레거시 run은 역할별 경계를 유지합니다.
+- 보고 시점: 방향 확정, 이미지 작업 접수·완료(실제 job ID 포함), 첫 화면 표시, 각 확인 회차 결과, 미리보기 준비. 시간 간격 보고는 하지 않습니다.
+- 사전 체크와 `doctor`는 `python3`와 Python Playwright만 확인하고 `cwebp`는 참고 정보로 표시합니다(없으면 macOS `sips` 사용). PM pane과 같은 로그인 셸 기준으로 `python3`를 찾습니다.
+- 샘플 요청 채우기는 가상의 입주청소 업체 홈페이지(**첫날 입주청소**)로 바뀌었습니다. 견적 계산기, 실제로 입력·검증되는 예약 문의 폼, 이미지 최대 8장, 영상 없음이 포함됩니다. 내용은 `examples/prd.md`, `examples/design.md`와 같습니다.
+
+**0.8.0에서 시작한 run**: 0.8.0 지침은 이번 버전에서 제거된 helper와 스킬 파일을 가리킵니다. 진행 중인 run은 업데이트 전에 마무리하거나, 업데이트 후 취소하고 새 run으로 다시 시작합니다. 0.8.0 run을 0.9.0에서 재개하지 마세요. 별도의 호환 처리는 없습니다.
+
 ## 홈페이지 제작 스튜디오 (0.8.0)
 
 - 신규 PM 시작 인자에 `--plugin-dir <설치 checkout>/claude-plugin/homepage-studio`를 추가합니다. 명령줄에는 플러그인 경로만 전달하고 긴 지침은 기존처럼 파일을 읽는 첫 프롬프트로 전달합니다. `.claude/agents`를 새로 쓰지 않습니다.
@@ -97,7 +111,7 @@ CLI 사전 점검은 `node dist/src/cli.js project readiness --project ID`입니
 - 설치된 Higgsfield 스킬 본문 전체는 신규 run에 자동 주입하지 않으며, 필요한 reference 경로만 안내합니다. 설정의 명시적 `skills`는 계속 지원합니다.
 - `doctor`에서 `studio.plugin`과 보조 도구 상태를 확인합니다. 실행 화면은 필수 스킬·스크립트가 없으면 재설치를 안내하고, 선택 도구 누락은 경고만 표시합니다.
 
-브로커 업데이트가 기존 Claude 프로세스를 재시작하지는 않습니다. 이미 시작한 PM의 도구 목록에 새 번들이 추가됐다고 간주하지 않으며, 새 프로젝트·피드백 run부터 새 로딩 경로를 사용합니다. 아래 0.7.0 절은 이전 구현 기록입니다.
+브로커 업데이트가 기존 Claude 프로세스를 재시작하지는 않습니다. 이미 시작한 PM의 도구 목록에 새 번들이 추가됐다고 간주하지 않으며, 새 프로젝트·피드백 run부터 새 로딩 경로를 사용합니다. 이 절과 아래 0.7.0 절은 이전 구현 기록이며, 0.9.0에서 바뀐 내용은 위 절을 따릅니다.
 
 참고: [Claude 플러그인 공식 명세](https://code.claude.com/docs/en/plugins-reference). 제3자 출처·라이선스는 저장소의 `claude-plugin/homepage-studio/THIRD_PARTY_NOTICES.md`에 있습니다.
 
@@ -152,7 +166,7 @@ CLI/API 차이를 확인할 때는 설치된 바이너리의 `herdr api schema -
 
 ## 샘플 이미지 생성 테스트
 
-샘플 요청과 `examples/prd.md`, `examples/design.md`는 새로운 Higgsfield 이미지 1장을 생성하여 실제 히어로에 사용하는 시나리오입니다. 생성 실패나 불명확한 접수는 자동 재제출하지 않습니다. 생성 기록, 실제 job ID, 파일 경로·해시, localhost 이미지 표시만 최소 검증합니다. 기존 이미지를 재사용한 작업은 신규 생성 테스트 통과로 간주하지 않습니다.
+샘플 요청과 `examples/prd.md`, `examples/design.md`는 가상의 입주청소 업체 홈페이지를 만들며, 페이지에서 정보를 맡는 Higgsfield 이미지를 최대 8장 새로 생성하고 영상은 만들지 않는 시나리오입니다(0.9.0). 생성 실패나 불명확한 접수는 자동 재제출하지 않습니다. 생성 기록, 실제 job ID, 파일 경로·해시, localhost 이미지 표시를 확인합니다. 기존 이미지를 재사용한 작업은 신규 생성 테스트 통과로 간주하지 않습니다.
 
 기존 프로젝트의 원본 문서를 수정해도 진행 중인 run의 문서 사본은 바뀌지 않습니다. 새 테스트는 새 프로젝트로 초기화하거나 새 해시를 포함한 `feedback`/`apply-inputs` 명령을 사용합니다. 이전 실행의 이미지·생성 기록·상태 JSON은 보존합니다.
 

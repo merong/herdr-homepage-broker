@@ -152,7 +152,7 @@ test("T11 byte fragmented UTF-8, multiplexed IDs, oversized frames and early clo
     await fs.rm(f.root, { recursive: true });
   }
 });
-test("T14/T31 two PMs use native helpers, third project remains queued", async () => {
+test("T14/T31 two native PMs build without extra panes, third project remains queued", async () => {
   const f = await setup();
   try {
     for (const id of ["A", "B", "C"]) await f.b.handle(f.submit(id));

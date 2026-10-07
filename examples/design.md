@@ -1,23 +1,44 @@
-# Example Studio 디자인 · 이미지 생성 테스트
+# 첫날 입주청소 — 디자인 방향
 
-## 화면
-밝은 아이보리 배경, 차분한 파란색 강조색, 읽기 쉬운 한국어 서체를 사용한다.
-데스크톱 히어로는 카피와 큰 사진 2열, 모바일은 카피 다음 사진 1열로 배치한다.
-생성 사진이 즉시 식별되도록 히어로 가로폭의 절반 이상을 사용하며 과도한 오버레이로 가리지 않는다.
-서비스는 데스크톱 3열, 모바일 1열. 텍스트 워드마크를 사용하며 별도 로고나 실적을 만들지 않는다.
-절제된 CSS 진입 모션만 사용하고 키보드 탐색, prefers-reduced-motion, 이미지 alt를 지원한다.
+## 인상
 
-## 이번 실행에서 새로 생성할 이미지 1장
-Higgsfield MCP에서 아래 프롬프트를 바탕으로 16:9, count=1 이미지를 생성한다.
-이전 추상 유리 이미지와 구분되는 구체적인 공간 사진을 만든다. 실제 회사 사무실이라고 주장하지 않는다.
+이사 첫날 아침, 막 청소를 마친 빈 집에 들어섰을 때의 느낌이다. 빛이 바닥에 길게 들어오고, 닦은 유리와 스테인리스에 반사가 있고, 아무 냄새도 나지 않는 조용함. 귀엽거나 들뜬 느낌보다 믿을 수 있는 전문가의 담백함.
 
-Prompt: Editorial architectural photograph of a fictional creative design studio in soft morning daylight. A long pale oak desk with neatly arranged blank paper material samples, a small cobalt-blue sculptural object and a green plant. Large windows, ivory plaster walls, warm natural wood, calm muted blue accents, subtle realistic shadows. Wide horizontal composition, inviting professional atmosphere, crisp realistic material details, no people, no text, no logos, no watermark. This is an illustrative fictional studio, not a real company location.
+## 브랜드 고정 요소
 
-최종 화면 alt: “햇살이 들어오는 가상의 디자인 스튜디오, 원목 책상과 파란 오브제”.
-사진 아래 “AI로 제작한 스튜디오 콘셉트 이미지”라는 짧은 설명을 배치한다.
+없다. 로고, 색, 서체는 제작자가 정한다. 워드마크는 텍스트로 만든다.
 
-## 이미지 전달과 검증
-디자이너 소유의 실행 폴더 assets/에 원본 및 필요하면 JPEG/WebP 웹용 파생본을 저장한다.
-파일명은 hero-studio이며 형식에 맞는 확장자를 사용한다. 원본을 보존하고 각 파일의 크기·해시·job ID를 media-receipts.json에 기록한다.
-개발자는 웹용 파일을 app/assets/에 복사하고 실제 img src, width/height, object-fit: cover를 적용한다.
-장식용 CSS 배경이나 이전 이미지로 이 요구사항을 대체하지 않는다. 생성되지 않으면 미완료로 보고한다.
+## 참고할 성격
+
+화면을 그대로 베끼지 말고, 아래 성격만 가져온다.
+
+- toss.im: 한 화면에 한 메시지를 담는다. 한국어 제목이 크고, 숫자를 크고 단순하게 보여 준다.
+- apple.com 제품 페이지: 스크롤에 따라 장면이 바뀌며 하나의 이야기를 끝까지 보여 준다.
+- muji.com: 재질이 보이는 담백한 사진과 넉넉한 여백.
+
+## 색과 글자
+
+- 색은 사진 속 빛과 재질에서 출발해 정한다. 청소 업체 사이트에 흔한 파랑·민트 대신 이 회사만의 색을 찾는다.
+- 한국어 제목은 크고 단단하게, 본문은 휴대폰에서 편하게 읽히게 한다.
+
+## 모션
+
+움직임으로 "깨끗해지는 과정"과 "정확함"을 보여 준다. 아래는 예시이며 다른 아이디어를 써도 된다.
+
+- 청소 전후를 손가락으로 끌어서 비교하는 슬라이더
+- 스크롤하면 뿌연 장면이 맑아지거나, 체크리스트 항목이 차례로 체크되는 장면
+- 견적 계산기에서 금액 숫자가 부드럽게 바뀌는 효과
+
+모션은 페이지의 메시지를 돕는 곳에 쓴다. 휴대폰에서도 부드러워야 하고, 움직임 줄이기(reduced-motion) 설정에서는 움직임 없이 같은 정보가 보여야 한다.
+
+## 이미지
+
+- 25평 안팎의 같은 아파트(밝은 원목 바닥, 흰 벽, 남향 창)를 기준으로 여러 장면을 만든다. 모든 장면이 한 집의 이야기처럼 보여야 한다.
+- 청소 전후 비교는 같은 구도와 같은 빛으로 맞춘다. 청소 후 이미지를 기준으로 청소 전 상태를 만들면 구도가 어긋나지 않는다.
+- 작업자는 손, 장갑, 도구 위주로 보여 준다. 유니폼과 도구의 색은 브랜드 색과 맞춘다.
+
+## 휴대폰
+
+- 고객 대부분은 휴대폰으로 여러 업체를 비교한다.
+- 첫 화면에서 업체의 성격과 가격대가 보여야 한다.
+- 견적 보기 버튼은 스크롤해도 엄지가 닿는 곳에 둔다.

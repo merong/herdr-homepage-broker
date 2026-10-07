@@ -114,7 +114,7 @@ export async function assignment(
       r.run_id,
       "pm-instructions.md",
     );
-    return `Initialize this PM session by reading and following ${JSON.stringify(instructions)}. Then read ${JSON.stringify(taskFile)} and execute only that assignment. Use Claude native agents when helpful; all broker reports come from this PM.`;
+    return `Initialize this PM session by reading and following ${JSON.stringify(instructions)}. Then read ${JSON.stringify(taskFile)} and execute only that assignment in this session yourself; all broker reports come from this PM.`;
   }
   return message;
 }

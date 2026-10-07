@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { Config, roles, fail } from "../contracts/types.js";
 import { atomic, realDirectory } from "../storage/store.js";
 import { injectedSkills } from "../config.js";
-import { studio, studioAgents } from "../agents/studio.js";
+import { studio } from "../agents/studio.js";
 
 // Broker-owned metadata only. Never rewrite PRD/design, credentials or Claude settings.
 export async function prepareRuntime(
@@ -27,8 +27,8 @@ export async function prepareRuntime(
             bootstrap: "pm",
             herdr_agents: 1,
             plugin: { name: "homepage-studio", path: studio.dir },
-            native_agents: studioAgents,
-            helper_limit: { value: 2, enforcement: "prompt" },
+            workflow: ["direction", "first-screen", "build-out"],
+            builder: "pm",
             reporting: "pm",
           }
         : {

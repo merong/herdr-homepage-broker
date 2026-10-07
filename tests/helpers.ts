@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { Config, Command } from "../src/contracts/types.js";
 import { hash } from "../src/storage/store.js";
 import { Herdr } from "../src/herdr/transport.js";
+// Studio tool discovery would otherwise run the developer's login shell.
+delete process.env.SHELL;
 export async function fixture() {
   const root = await fs.mkdtemp("/private/tmp/hp-");
   const config: Config = {

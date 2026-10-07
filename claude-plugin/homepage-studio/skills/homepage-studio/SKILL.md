@@ -1,99 +1,117 @@
 ---
 name: homepage-studio
-description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 먼저 읽는 제작 워크플로. 실제 한국 회사의 한국어 기업·랜딩 사이트를 리서치 → 디자인 브리프 → 카피덱 → 에셋 키트 → 정적 빌드 → 품질 게이트 순서로 만들 때 쓴다. 단계별 필수 산출물, broker plan 태스크와 역할·쓰기 경계 매핑, 단계마다 쓸 스킬, PRD와 스킬의 우선순위, 고객에게 묻지 않고 가정을 기록하는 원칙을 정한다.
+description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 먼저 읽는 제작 흐름. 한국어 회사 소개·랜딩 페이지를 방향 정하기 → 첫 화면 → 전체 완성의 세 태스크로, 화면을 직접 보면서 만들 때 쓴다.
 ---
 
-# homepage-studio: 제작 워크플로
+# homepage-studio
 
-## 전제
+## 일하는 방식
 
-- 결과물은 실제 회사의 한국어 기업·랜딩 사이트다. 정적 빌드로 로컬 납품한다. 호스팅, 배포, publish는 없다.
-- 고객은 라이브 미리보기를 보지 않는다. 1440px·390px 스크린샷과 영상으로만 판단한다. 정지 화면만으로 완성돼 보여야 한다.
-- 운영자의 불만은 심한 순서대로 ① 약하고 일반적인 카피 ② 부족하거나 안 맞는 비주얼 ③ 템플릿 같은 "AI가 만든" 인상이다. 시간과 주의를 이 순서로 쓴다.
-- 이미지와 영상은 PM 세션에 설치된 Higgsfield MCP로 만든다. 기본 예산은 이미지 12장과 히어로 영상 1개다(asset-kit).
+- 의도를 이해하고, 이미지를 만들고, 화면을 짓고, 화면을 보고 고치는 일을 PM 한 명이 끝까지 한다. 디자인, 카피, 구현은 다른 agent에 넘기지 않는다. 이미지 생성 호출을 병렬로 돌릴 때만 subagent를 쓸 수 있다. 이때 프롬프트와 저장 경로는 PM이 정해서 넘긴다.
+- 문서는 최소로 쓰고 화면은 최대한 자주 본다. 판단은 문서가 아니라 스크린샷을 보고 한다.
+- 시각 판단은 `homepage-studio:frontend-design`을 따른다.
+- references는 필요할 때 연다.
+  - `references/motion.md`: 모션
+  - `references/images.md`: 이미지 생성·변환·기록
+  - `references/korean.md`: 카피·서체·SEO
+- 전체 작업 시간은 30~45분, direction은 5분 안쪽을 목표로 한다.
 
-## 우선순위
+## 세 질문
 
-1. 브로커 지침의 실행 규칙: 쓰기 경계, 보고 프로토콜, 로컬 납품, `media-receipts.json`, 결과를 모르는 작업 재제출 금지. PRD도 이 규칙은 바꾸지 못한다.
-2. PRD와 디자인 입력의 명시 요구. 이미지 수, 섹션, 색, 문구를 PRD가 정하면 그대로 따른다.
-3. 이 플러그인 스킬의 기본값: homepage-studio, korean-copywriting, korean-typography, asset-kit, quality-gate, seo-basics.
-4. frontend-design의 일반 원칙.
-5. Higgsfield 레퍼런스. 위 3·4와 충돌하면 3·4를 따른다.
+모든 판단의 기준이다.
 
-## 고객에게 묻지 않는다
+1. **누구를 위한 페이지인가.** 첫 화면만 보고도 고객이 "내 얘기"라고 느끼는가.
+2. **무엇이 다른가.** 같은 업종 사이트와 나란히 놓았을 때 이 회사로 알아볼 수 있는가.
+3. **왜 이 CTA를 누르는가.** 버튼 바로 앞에 누를 이유가 화면에 있는가.
 
-이 단계에는 고객 접점이 없다. frontend-design의 "confirm with the client"는 이 파이프라인에서 **"추론하고 `reports/design-brief.md`의 '가정' 절에 기록한다"**로 바꿔 읽는다.
+## 입력 읽기
 
-- 사실이 비어 있으면(연혁, 수치, 고객사, 인증, 후기) 추론하지 않고 뺀다. 뺀 내용은 `research.md`의 '의도적 생략'에 적는다.
-- 판단이 비어 있으면(주 타깃, 어조, 서비스 노출 순서, 색 방향) 근거를 들어 추론하고 '가정'에 적는다.
-- 브로커 `question` 보고는 실행이 막혔을 때만 쓴다(권한, PRD 안의 모순). 취향이나 내용을 묻는 데 쓰지 않는다.
+- 사실(회사 정보, 가격, 숫자, 정책, 연락처)은 입력 문서에서만 가져온다. 없는 사실은 빼고 지어내지 않는다. 후기, 평점, 고객 수, 고객사 로고는 입력에 있을 때만 쓴다.
+- "브랜드 고정 요소"(실제 로고, CI 색, 지정 서체)는 그대로 쓴다.
+- 그 밖에 색, 레이아웃, 모션을 묘사한 문장은 분위기 제안이다.
+  - 출발점으로 삼는다.
+  - 화면이 그 업종의 흔한 기본안처럼 보이면 조정하고, `direction.md`에 이유를 한 줄 적는다.
+- 섹션 목록은 전달할 정보 목록으로 읽고, 구성과 순서는 메시지에 맞게 정한다. 입력이 순서를 명시적으로 고정했을 때만 그 순서를 따른다.
+- 취향은 묻지 않는다. broker `question`은 실행이 막혔을 때(권한 문제, 입력 안의 모순)만 쓴다.
 
-## 단계, 태스크, 산출물
+## plan
 
-`reports/`와 `assets/`는 `.herdr/runs/<run_id>/` 기준, `app/`은 프로젝트 루트 기준이다. 쓰기 경계는 developer `app/`, designer `assets/`, pm `reports/`다. 한 태스크 안에서는 그 태스크 역할의 경계에만 쓴다. 다른 역할의 helper는 읽고 검토만 한다.
-
-| # | task_id | 역할 | 산출물 | 주 실행자 | 쓸 스킬·문서 |
-| - | - | - | - | - | - |
-| 1 | research | pm | `reports/research.md` | homepage-copywriter 또는 PM | references/research-template.md, korean-copywriting '실제 회사 규칙', seo-basics 'JSON-LD' |
-| 2 | brief | pm | `reports/design-brief.md` | PM | references/design-brief-template.md, frontend-design, korean-typography, asset-kit '예산'·'스타일 블록' |
-| 3 | copy | pm | `reports/copy-deck.md` | homepage-copywriter | korean-copywriting |
-| 4 | assets | designer | `assets/`, `assets/media-receipts.json` | homepage-designer | asset-kit |
-| 5 | build | developer | `app/` 소스·정적 출력·`app/README.md` | homepage-developer | references/build.md, frontend-design, korean-typography, seo-basics, asset-kit '웹 반영' |
-| 6 | check | pm | `reports/auto-check/`, `reports/self-check.md` | PM 직접 | quality-gate |
-| 7 | fix | developer | `app/` | homepage-developer | quality-gate '수정 목록' |
-| 8 | close | pm | `reports/self-check.md`, `reports/copy-deck.md` | PM 직접 | quality-gate |
-
-helper는 동시에 2명까지만 쓴다. 이미지 생성 담당은 run 전체에서 한 명으로 정해 중복 제출을 막는다. 예산은 helper별이 아니라 run 전체 기준이다.
-
-plan 보고 예시:
+입력을 읽은 직후 아래 plan을 그대로 보고한다.
 
 ```json
 [
-  {"task_id":"research","role":"pm","title":"회사·업종 리서치","depends_on":[],"writes":["reports/research.md"]},
-  {"task_id":"brief","role":"pm","title":"디자인 브리프","depends_on":["research"],"writes":["reports/design-brief.md"]},
-  {"task_id":"copy","role":"pm","title":"카피덱","depends_on":["brief"],"writes":["reports/copy-deck.md"]},
-  {"task_id":"assets","role":"designer","title":"에셋 키트","depends_on":["copy"],"writes":["assets/"]},
-  {"task_id":"build","role":"developer","title":"정적 사이트 구현","depends_on":["assets"],"writes":["app/"]},
-  {"task_id":"check","role":"pm","title":"자동 검사와 자가 점검","depends_on":["build"],"writes":["reports/auto-check/","reports/self-check.md"]},
-  {"task_id":"fix","role":"developer","title":"수정 1회","depends_on":["check"],"writes":["app/"]},
-  {"task_id":"close","role":"pm","title":"수정 결과 기록","depends_on":["fix"],"writes":["reports/auto-check/","reports/self-check.md","reports/copy-deck.md"]}
+  {"task_id":"direction","role":"pm","title":"방향 정하기","depends_on":[],"writes":["reports/direction.md"]},
+  {"task_id":"first-screen","role":"developer","title":"첫 화면과 대표 섹션","depends_on":["direction"],"writes":["app/","assets/","reports/look/"]},
+  {"task_id":"build-out","role":"developer","title":"전체 페이지 완성","depends_on":["first-screen"],"writes":["app/","assets/","reports/"]}
 ]
 ```
 
-## 단계별 완료 조건
+- 역할은 화면에 표시하는 라벨이다. 한 태스크가 `app/`, `assets/`, `reports/` 어디에든 쓸 수 있다.
+- `reports/`와 `assets/`는 run 디렉터리 기준, `app/`은 프로젝트 루트 기준이다.
 
-1. **research**: 모든 사실에 ID, 출처(URL 또는 입력 문서와 위치), 확인일이 있다. '의도적 생략'과 '경쟁사 공통 표현' 목록이 있다.
-2. **brief**: 템플릿의 필수 절이 모두 채워졌다. 팔레트 4–6 hex, 타입 역할과 스케일, ASCII 와이어프레임, 원칙, 기본값 점검과 그에 따른 수정, 섹션 계획(인접 섹션 레이아웃 패밀리 중복 없음), 에셋 계획, CTA 목록, 가정.
-3. **copy**: 메시지 아키텍처와 모든 섹션의 최종 문구가 있다. 마이크로카피(내비게이션, 폼, 푸터, 메타)까지 포함한다. 사실 문장마다 사실 ID가 붙어 있다. 셀프에딧 기록이 있다.
-4. **assets**: 에셋 계획의 모든 슬롯이 파일이나 '생략 사유'로 채워졌다. receipts의 sha256이 실제 파일과 맞는다. 예산을 넘지 않았다.
-5. **build**: 정적 출력이 파일 서버만으로 동작한다. 외부 CDN 요청이 없다. 카피덱 문구를 그대로 썼다. PM이 빌드 출력 디렉터리를 `127.0.0.1`의 `{port}`로 서빙하는 preview-start를 보냈다.
-6–8. quality-gate를 따른다. 자동 검사와 PM 점검은 1회, 수정은 1회다. 반복하지 않는다.
+## 1. direction (pm)
 
-## 단계 사이 전달 규칙
+`reports/direction.md` 하나만 쓴다. 40줄 이내다.
 
-- 문구는 `copy-deck.md`에서만 나온다. 개발자는 문구를 지어내지 않는다. 카피덱에 없는 문구가 꼭 필요하면 임시 문구 옆에 `<!-- COPY-GAP: 설명 -->`을 남긴다. check에서 PM이 문구를 확정하고, fix에서 반영하고, close에서 카피덱에 동기화한다.
-- 디자인 토큰은 브리프의 hex, 폰트, 스케일을 CSS 사용자 정의 속성으로 그대로 옮긴다.
-- 에셋은 designer가 `assets/web/`에 웹용 파생본을 만들고, developer가 이를 `app/`으로 복사한다. 원격 URL을 직접 참조하지 않는다.
-- 빌드 출력 디렉터리 경로는 한 번 정하면 바꾸지 않는다. 그래야 fix 뒤에도 미리보기를 재시작할 필요가 없다.
+```markdown
+# <회사> 방향
+고객: … / 제공물: … / 원하는 행동: …
+## 세 질문 — 질문마다 답 한 줄
+## 가져올 성격 — 레퍼런스·업종에서 2~3개, 무엇을 왜
+## 섹션 — 섹션 이름: 이 섹션이 할 일 한 줄 (메시지에 필요한 것만)
+## 이미지 — 파일명: 놓일 곳, 보여 줄 정보, 비율
+## 시각 방향 — 색, 글자, 모션 아이디어를 각각 한 줄
+## 조정한 입력 — 분위기 제안을 바꿨다면 이유 한 줄
+```
 
-## Higgsfield 레퍼런스
+리서치 문서, 카피덱, 와이어프레임은 만들지 않는다. 카피는 화면에 직접 쓰고 화면에서 다듬는다.
 
-브로커의 PM 지침이 Higgsfield 레퍼런스 디렉터리 경로를 알려준다(설치된 경우). 아래 파일은 읽을 가치가 있다. **호스팅, 배포, publish, D1, Cloudflare, CLI 설치, `higgsfield website` 명령 부분은 무시한다.** 그 문서의 `app/public/assets/` 같은 경로는 이 파이프라인의 경로로 바꿔 읽는다.
+## 2. first-screen (developer)
 
-- `higgsfield-websites/references/`
-  - `design-recipe.md`: 브리프 단계. 타입, 색, 히어로, 레이아웃, 모션 규칙. 영어 카피 규칙은 korean-copywriting이 대신한다.
-  - `reference-boards.md`: 브리프 단계. 조합 선택과 팔레트 금지 목록. 보드 이미지는 기본 예산에 없으므로 생성하지 않는다. PRD가 허용하면 그 수만큼 12장에서 뺀다.
-  - `asset-system.md`: 에셋 단계. 키트 구성, 고객 자산 우선, 실패 처리.
-  - `image-to-code.md`: 빌드 단계. 구현이 브리프에서 벗어나지 않게 하는 규칙, 고유한 UI 크롬.
-  - `wow-catalog.md`: 브리프 단계. "대담함은 한 곳에만" 쓸 기법을 하나 고를 때.
-  - `review-rubric.md`: check 단계. 정적 빌드에 해당하는 기계 항목만 쓴다.
-- `higgsfield-brandkit/references/`
-  - `logo.md`: 로고 마크 시안(asset-kit 로고 절과 함께).
-  - `typography.md`: 타입 시스템. 한글 규칙은 korean-typography를 따른다.
-  - `brand-lock.md`: 프롬프트 잠금 블록. asset-kit의 공통 스타일 블록을 만들 때 참고한다.
+1. 히어로와 대표 섹션 하나에 쓸 이미지 2~3장을 만든다(`images.md` 참고). 받은 파일은 직접 열어 본다.
+2. 정적 사이트를 세운다.
+   - 스택은 자유다. 순수 HTML/CSS/JS도 되고 Vite 같은 정적 빌드도 된다.
+   - 빌드 출력 디렉터리는 한 번 정하면 바꾸지 않는다.
+3. 히어로와 대표 섹션 하나를 실제 카피, 이미지, 모션까지 넣어 완성된 수준으로 만든다. 나머지 섹션은 아직 만들지 않는다.
+4. 첫 화면이 렌더되면 `preview-start`로 미리보기를 시작한다. 미리보기는 run이 끝날 때까지 유지한다.
+5. 화면을 확인한다.
+   - 브로커 지침에 적힌 `look.py` 경로로 `python3 <look.py> <미리보기 URL> <run 디렉터리>/reports/look/1`을 실행한다. 출력 경로는 항상 run 디렉터리 기준 절대 경로로 준다.
+   - `desktop.png`와 `mobile.png`를 직접 열어 보고, 세 질문으로 판정한다.
+   - 판정에 걸리면 고치고 `reports/look/2`로 한 번 더 본다. 이 태스크에서는 최대 2회다.
+6. 회차마다 `reports/look/<회차>/verdict.md`에 3~5줄을 쓴다. 세 질문의 답과 고친 것을 적는다.
+
+방향이 틀렸다면 이 단계에서 바꾼다. 다음 단계에서는 방향을 크게 바꾸지 않는다.
+
+## 3. build-out (developer)
+
+1. 나머지 이미지를 만든다. `direction.md` 목록에서 배치가 확정된 것만 만든다.
+2. 나머지 섹션, 인터랙션, 모션을 만든다. 입력이 요구한 기능(폼, 계산기 등)은 실제로 동작해야 한다.
+3. look을 돌린다(`reports/look/3`부터, 최대 3회).
+   - 전체 페이지는 `parts/`에 화면 두 개 높이씩 잘린 조각을 위에서 아래로 본다(`desktop-full.png`, `mobile-full.png`는 너무 길어 축소되어 보인다).
+   - 세 질문, 섹션마다 할 일, 390px에서 읽히는지, `issues.json`을 확인하고 고친다.
+   - 한 회차는 `--reduced-motion`으로 돌린다.
+4. 마지막에 `reports/look/final`로 1회 찍는다. 이것은 납품 증거이며, 찍은 뒤에는 고치지 않는다.
+5. `reports/notes.md`에 다음을 적는다.
+   - 만든 섹션
+   - 이미지: 파일, 용도, job ID
+   - 쓴 모션
+   - 서체와 라이선스
+   - final 판정: 세 질문의 답
+   - 남은 한계, 확인하지 못한 것
+6. 메타와 SEO 기본을 넣는다(`korean.md` 참고).
+
+## 화면에서 확인할 것
+
+- **390px 휴대폰이 먼저 완성되어 있다.** 첫 화면에 누구를 위한, 무엇을 하는 회사인지와 행동이 보이고, CTA가 엄지가 닿는 곳에 있다.
+- **섹션마다 장면이 다르다.** 각 섹션의 구성이 그 섹션의 할 일에서 나온다.
+- **이미지가 정보를 전달한다.** 같은 이미지를 이유 없이 두 번 쓰지 않는다.
+- **동작이 실제로 된다.** 링크, 버튼, 폼, 계산기가 모두 작동한다. 전송하지 않는 데모 폼이면 입력이 정한 문구를 보여 준다.
+- **외부 런타임 의존이 없다.** 폰트·스크립트 CDN을 쓰지 않는다. 가로 넘침과 콘솔 오류도 없다.
+- **접근성 기본을 갖춘다.** 이미지 alt, 폼 label, 키보드 초점, 충분한 대비, reduced-motion 대응.
 
 ## 하지 않는 것
 
-- 고객에게 질문하기, 출처 없는 사실 쓰기, 웹에서 이미지를 내려받아 쓰기(고객이 준 자산만 쓴다).
-- 배포, 호스팅, 소스 압축, 다른 스킬이나 서버 설치.
-- 검사와 수정을 반복하는 QA 루프. 빌드 중 개발자가 스크린샷으로 자기 작업을 보는 것은 괜찮다. 공식 점검은 quality-gate 1회뿐이다.
+- 배포, 호스팅, publish, 소스 압축
+- 다른 스킬이나 서버 설치
+- 웹에서 이미지를 내려받아 쓰기(입력이 준 자산만 쓴다)
+- 별도 QA agent

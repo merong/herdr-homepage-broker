@@ -88,7 +88,17 @@ export function makeTask(
     event_ids: {},
   };
 }
-export function validatePlan(input: any): Task[] {
+const boundaries: Record<Task["role"], string> = {
+  developer: "app/",
+  designer: "assets/",
+  pm: "reports/",
+};
+// A claude-native run has one writer (the PM), so roles are labels and any
+// task may write under the three run roots. Other modes keep role boundaries.
+export function validatePlan(
+  input: any,
+  mode?: NonNullable<Run["orchestration"]>["mode"],
+): Task[] {
   if (!Array.isArray(input) || input.length < 1 || input.length > 30)
     fail("invalid_plan", "Plan needs 1..30 tasks");
   const tasks: Task[] = input.map((x: any) => {
@@ -100,16 +110,16 @@ export function validatePlan(input: any): Task[] {
       !Array.isArray(x.writes)
     )
       fail("invalid_plan", "Invalid role/task/paths");
+    const allowed =
+      mode === "claude-native"
+        ? Object.values(boundaries)
+        : [boundaries[x.role as Task["role"]]];
     for (const file of x.writes) {
       if (
         typeof file !== "string" ||
         file.includes("..") ||
         path.isAbsolute(file) ||
-        !(
-          (x.role === "developer" && file.startsWith("app/")) ||
-          (x.role === "designer" && file.startsWith("assets/")) ||
-          (x.role === "pm" && file.startsWith("reports/"))
-        )
+        !allowed.some((root) => file.startsWith(root))
       )
         fail("invalid_plan", "Role writes outside assigned boundary");
     }
@@ -221,7 +231,7 @@ export function report(r: Run, payload: any) {
         "team_required",
         "PM must send team-create before submitting its plan",
       );
-    const tasks = validatePlan(payload.tasks);
+    const tasks = validatePlan(payload.tasks, r.orchestration?.mode);
     r.tasks.push(...tasks);
     t.status = "completed";
     a.task_id = null;
@@ -337,7 +347,7 @@ export async function newRun(
       makeTask(
         "plan",
         "pm",
-        "Read PRD/design and plan website tasks. Execute through this PM session with the homepage-studio skills and its native helper agents when useful. No additional Herdr panes.",
+        "Read PRD/design and send the homepage-studio plan (direction, first-screen, build-out). This PM session designs, writes, generates images and builds the site itself. No additional Herdr panes.",
       ),
     ],
     questions: [],

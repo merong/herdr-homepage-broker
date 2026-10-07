@@ -335,7 +335,7 @@ function projectDetail(p) {
       el(
         "p",
         "help",
-        "Herdr PM 1명 · Claude 내부 개발자/디자이너/카피. 내부 작업 진행은 PM 보고로 표시하며, 별도 Herdr pane은 생성하지 않습니다.",
+        "Herdr PM 1명 · PM이 디자인·카피·이미지·구현을 직접 진행합니다. 진행은 PM 보고로 표시하며, 별도 Herdr pane은 생성하지 않습니다.",
       ),
     );
   if (p.orchestration?.mode === "pm-led")
