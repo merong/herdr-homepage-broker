@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>look.py fixed elements</title>
+<!--
+  Codex review 2 fixture (R2-2) plus a closed drawer and a call bar.
+  Two fixed badges sit in a preserve-3d box, which look.py's ancestor scan
+  does not list, so its two signals disagree (review 4).
+  #fail-fix makes look.py's full-page layout fix throw at its first hide;
+  #fail-undo also blocks putting the saved inline styles back (R2-3);
+  #fail-states starts the style attributes absent, empty and set and reports
+  them after the restore; #timeout makes the scroll run out of time.
+-->
+<script>
+  if (/^#fail-(fix|undo|states)$/.test(location.hash)) {
+    const setProperty = CSSStyleDeclaration.prototype.setProperty;
+    CSSStyleDeclaration.prototype.setProperty = function (k, v, p) {
+      if (k === "display" && v === "none") throw new Error("injected layout fix failure");
+      return setProperty.call(this, k, v, p);
+    };
+  }
+  if (location.hash === "#timeout") {
+    // Every clock read jumps 3 s, so look.py's scroll runs out of time.
+    const now = Date.now;
+    let skew = 0;
+    Date.now = () => now() + (skew += 3000);
+  }
+  if (location.hash === "#fail-undo") {
+    for (const name of ["setAttribute", "removeAttribute"]) {
+      const original = Element.prototype[name];
+      Element.prototype[name] = function (attr, ...rest) {
+        if (attr === "style") throw new Error("injected restore failure");
+        return original.call(this, attr, ...rest);
+      };
+    }
+  }
+</script>
+<style>
+  html { scroll-behavior: smooth }
+  body { margin: 0; font: 22px sans-serif; background: #fafafa }
+  header { position: sticky; top: 0; padding: 16px; background: #172e39; color: white; z-index: 5 }
+  .hero { height: 950px; padding: 30px; box-sizing: border-box }
+  .panel { transform: translateZ(0); height: 650px; background: #dbecdc; position: relative; padding: 30px; box-sizing: border-box }
+  #local-cta { position: fixed; right: 20px; bottom: 60px; padding: 20px; border: 0; background: #b00020; color: white }
+  .tail { height: 1400px; padding: 30px }
+  .flat3d { transform-style: preserve-3d; height: 40px }
+  .flat3d b { position: fixed; left: 4px; top: 4px; width: 8px; height: 8px; background: #777 }
+  #call-bar { position: fixed; left: 16px; bottom: 16px; width: 120px; height: 48px; background: #00a050 }
+  #dock { position: fixed; bottom: 0; left: 0; right: 0; height: 160px; background: #173791; z-index: 10; transform: translateY(100%) }
+  #dock.on { transform: none }
+  #drawer { position: fixed; top: 0; right: 0; width: 280px; height: 100%; background: #ff8800; transform: translateX(100%) }
+</style>
+<header>Sticky header</header>
+<main>
+  <section class="hero">First viewport: the dock is off-screen until scrolling.</section>
+  <section class="panel">Transformed panel. Its fixed CTA is placed in this section.<button id="local-cta">LOCAL CTA MUST REMAIN</button><div class="flat3d"><b id="panel-3d"></b></div></section>
+  <section class="tail"><p>Long body.</p><div class="flat3d"><b id="tail-3d"></b></div></section>
+</main>
+<footer>Footer</footer>
+<div id="call-bar"></div>
+<div id="dock"></div>
+<aside id="drawer"></aside>
+<script>
+  addEventListener("scroll", () => document.querySelector("#dock").classList.toggle("on", scrollY > 200));
+  if (location.hash === "#fail-states") {
+    // Once look.py puts the styles back, the page sends what it sees.
+    const els = ["header", "#call-bar", "footer"].map((s) => document.querySelector(s));
+    els[1].setAttribute("style", "");
+    els[2].setAttribute("style", "position: sticky; bottom: 0");
+    const read = () => els.map((el) => el.getAttribute("style"));
+    const before = read();
+    new MutationObserver(() =>
+      fetch("/styles?" + encodeURIComponent(JSON.stringify({ width: innerWidth, before, after: read() }))),
+    ).observe(document.body, { attributes: true, attributeFilter: ["style"], subtree: true });
+  }
+</script>

@@ -1,12 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import http from "node:http";
+import { AddressInfo } from "node:net";
 import path from "node:path";
+import zlib from "node:zlib";
+import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { Broker } from "../src/broker/broker.js";
-import { current } from "../src/domain/engine.js";
-import { claudeArgs } from "../src/agents/prompts.js";
-import { nativePrompt } from "../src/agents/native.js";
+import { current, validatePlan } from "../src/domain/engine.js";
+import { claudeArgs, rolePrompt } from "../src/agents/prompts.js";
+import { nativePrompt, shellQuote } from "../src/agents/native.js";
 import {
   lookScript,
   studio,
@@ -15,9 +22,10 @@ import {
   studioTools,
   treeHash,
 } from "../src/agents/studio.js";
-import { config, injectedSkills } from "../src/config.js";
+import { brokerSocket, config, injectedSkills } from "../src/config.js";
+import { command } from "../src/contracts/validate.js";
 import { hash } from "../src/storage/store.js";
-import { Run } from "../src/contracts/types.js";
+import { Agent, Run } from "../src/contracts/types.js";
 import { fixture, FakeHerdr, cmd, legacyTeam } from "./helpers.js";
 
 const repoPlugin = studio.dir;
@@ -53,6 +61,97 @@ async function launch(
       await fs.rm(f.root, { recursive: true, force: true });
     },
   };
+}
+const exec = promisify(execFile);
+// The nth task file the broker handed to the PM through "agent prompt".
+async function taskText(h: FakeHerdr, n: number) {
+  const prompt = h.calls.filter((c) => c[0] === "agent" && c[1] === "prompt")[
+    n
+  ][3];
+  return fs.readFile(
+    JSON.parse(/Then read ("[^"]+")/.exec(prompt)![1]),
+    "utf8",
+  );
+}
+const blocks = (text: string) =>
+  [...text.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => JSON.parse(m[1]));
+// What the PM does with an example: fresh UUIDs, its token, maybe a sequence.
+function filled(value: any, token: string, sequence?: number) {
+  const copy = structuredClone(value);
+  if (sequence !== undefined) copy.payload.sequence = sequence;
+  return JSON.stringify(copy)
+    .replace(/REPLACE_WITH_UUID/g, () => randomUUID())
+    .replaceAll("TOKEN_FROM_ASSIGNMENT_FILE", token);
+}
+// Runs a command line exactly as a shell would read it; never throws.
+async function shell(sh: string, line: string, env: NodeJS.ProcessEnv) {
+  try {
+    const { stdout, stderr } = await exec(sh, ["-c", line], { env });
+    return { code: 0, stdout, stderr };
+  } catch (e: any) {
+    return { code: e.code, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+  }
+}
+// The broker CLI reads a config; an empty one keeps the user's out of tests.
+async function cliEnv(root: string) {
+  const file = path.join(root, "cli-config.json");
+  await fs.writeFile(file, "{}");
+  return { ...process.env, HOMEPAGE_CONFIG: file };
+}
+// Where each color shows in a screenshot: pixel count and first/last row.
+// Decodes the 8-bit non-interlaced RGB(A) PNGs Chromium writes.
+async function colors(file: string, palette: Record<string, number[]>) {
+  const buf = await fs.readFile(file);
+  const idat: Buffer[] = [];
+  let i = 8,
+    width = 0,
+    height = 0,
+    ch = 0;
+  while (i < buf.length) {
+    const length = buf.readUInt32BE(i);
+    const type = buf.toString("ascii", i + 4, i + 8);
+    const chunk = buf.subarray(i + 8, i + 8 + length);
+    if (type === "IHDR") {
+      [width, height] = [chunk.readUInt32BE(0), chunk.readUInt32BE(4)];
+      assert.deepEqual(
+        [chunk[8], chunk[12]],
+        [8, 0],
+        `${file}: 8-bit, not interlaced`,
+      );
+      ch = chunk[9] === 6 ? 4 : 3;
+    } else if (type === "IDAT") idat.push(chunk);
+    i += 12 + length;
+  }
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const stride = width * ch;
+  const px = Buffer.alloc(height * stride);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)];
+    const src = raw.subarray(y * (stride + 1) + 1);
+    const row = px.subarray(y * stride);
+    const up = y ? px.subarray((y - 1) * stride) : undefined;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= ch ? row[x - ch] : 0;
+      const b = up ? up[x] : 0;
+      const c = up && x >= ch ? up[x - ch] : 0;
+      const p = a + b - c;
+      const [pa, pb, pc] = [Math.abs(p - a), Math.abs(p - b), Math.abs(p - c)];
+      const paeth = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      row[x] = (src[x] + [0, a, b, (a + b) >> 1, paeth][filter]) & 255;
+    }
+  }
+  const found: Record<string, { n: number; top: number; bottom: number }> = {};
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const o = y * stride + x * ch;
+      for (const [name, [r, g, b]] of Object.entries(palette)) {
+        if (px[o] !== r || px[o + 1] !== g || px[o + 2] !== b) continue;
+        const f = (found[name] ??= { n: 0, top: y, bottom: y });
+        f.n++;
+        f.bottom = y;
+      }
+    }
+  return found;
 }
 async function withClaudeRoot<T>(root: string, fn: () => Promise<T>) {
   const before = process.env.CLAUDE_CONFIG_DIR;
@@ -118,6 +217,12 @@ test("S01 homepage-studio plugin ships the lean skill, vendored frontend-design 
   ])
     assert.ok(look.includes(output), output);
   assert.match(look, /reduced_motion="reduce"/);
+  // Sticky/fixed are laid out for the full pages only, after the viewport shot.
+  const shot = (s: string) => look.indexOf(s);
+  assert.ok(shot('f"{name}.png"') > 0);
+  assert.ok(shot('f"{name}.png"') < shot("page.evaluate(FULL_PAGE_JS"));
+  assert.ok(shot("page.evaluate(FULL_PAGE_JS") < shot('f"{name}-full.png"'));
+  assert.match(look, /behavior: "instant"/);
 });
 
 test("S02 native PM launch adds --plugin-dir; pm-led launches stay unchanged", async () => {
@@ -238,6 +343,13 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
     const pm = await run.read("pm-instructions.md");
     const guide = await run.read("homepage-orchestration.md");
     assert.ok(pm.includes(guide), "PM instructions embed the shared guide");
+    assert.equal(pm.split(guide).length, 2, "the guide appears exactly once");
+    assert.equal(
+      pm.includes(path.join(run.dir, "homepage-orchestration.md")),
+      false,
+      "PM is never pointed at the copy it already has",
+    );
+    assert.match(pm, /do not open its copy homepage-orchestration\.md/);
     for (const gone of [
       /homepage-studio:homepage-(developer|designer|copywriter)/,
       /quality-gate|check_page|auto-check|self-check/,
@@ -265,15 +377,14 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
     const look = path.join(studio.dir, lookScript);
     assert.ok(
       guide.includes(
-        `python3 ${look} <preview URL> ${run.dir}/reports/look/<round>`,
+        `Run: python3 ${shellQuote(look)} <preview URL> ${shellQuote(path.join(run.dir, "reports/look"))}/<round> (`,
       ),
     );
     assert.match(guide, /first-screen: at most 2 rounds/);
     assert.match(guide, /build-out: at most 3 rounds/);
-    assert.ok(
-      guide.includes(
-        `one final run into ${run.dir}/reports/look/final as delivery evidence`,
-      ),
+    assert.match(
+      guide,
+      /then one final run with final as <round>, as delivery evidence/,
     );
     assert.match(guide, /No separate QA agent/);
     assert.match(guide, /Playwright is missing, do not install it/);
@@ -314,7 +425,10 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
       pm,
       /direction set, image job accepted\/completed with the actual job ID, first screen visible, each look round result, preview ready/,
     );
-    assert.match(pm, /PM alone starts preview: preview-start with argv/);
+    assert.match(
+      pm,
+      /PM alone starts preview: '\S+\/broker-cli' preview start --file <json> with type preview-start and argv/,
+    );
     assert.match(pm, /Broker decides overall review_pending/);
     const r = current(run.p);
     const broker = await nativePrompt(
@@ -324,7 +438,10 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
       "",
       await studioPlugin(),
     );
-    assert.match(broker, /only PM calls media-request/);
+    assert.match(
+      broker,
+      /only PM calls media-request \('\S+\/broker-cli' media request --file <json>\)/,
+    );
     assert.match(broker, /After acceptance do not poll/);
     assert.doesNotMatch(broker, /installed\/authenticated Higgsfield MCP/);
   } finally {
@@ -668,5 +785,628 @@ test("S08 look.py tools are resolved like the PM pane's login shell and only war
     }
   } finally {
     await fs.rm(bin, { recursive: true, force: true });
+  }
+});
+
+test("S09 native task files carry complete report envelopes sent through one broker-cli path", async () => {
+  const run = await launch();
+  try {
+    const cli = path.join(run.dir, "broker-cli");
+    assert.equal((await fs.stat(cli)).mode & 0o777, 0o700);
+    const wrapper = await fs.readFile(cli, "utf8");
+    assert.ok(
+      wrapper.startsWith(
+        `#!/bin/sh\nexec '${process.execPath}' '${path.resolve("dist/src/cli.js")}' --socket '${brokerSocket(run.f.config)}' "$@"`,
+      ),
+    );
+    const agent = () => current(run.b.store.state.projects.A).agents[0];
+    const token = agent().token;
+    assert.equal(wrapper.includes(token), false);
+    const pm = await run.read("pm-instructions.md");
+    assert.ok(
+      pm.includes(`${shellQuote(cli)} report --file <JSON command file>`),
+    );
+    assert.ok(pm.includes(`${shellQuote(cli)} preview start --file <json>`));
+    assert.match(pm, /do not keep a multi-word command in one shell variable/);
+
+    const fill = (value: any) => filled(value, token);
+    const env = await cliEnv(run.f.root);
+    const send = async (value: any, name: string) => {
+      const file = path.join(run.f.root, name);
+      await fs.writeFile(file, fill(value));
+      return exec(cli, ["report", "--file", file], { env });
+    };
+
+    const planText = await taskText(run.h, 0);
+    assert.equal(planText.includes(token), false, "token stays out");
+    assert.ok(planText.includes(`    ${shellQuote(cli)} report --file <file>`));
+    const [progress, plan] = blocks(planText);
+    const skill = await fs.readFile(
+      path.join(studio.dir, "skills/homepage-studio/SKILL.md"),
+      "utf8",
+    );
+    const skillPlan = JSON.parse(
+      /## plan[\s\S]*?```json\n([\s\S]*?)\n```/.exec(skill)![1],
+    );
+    assert.deepEqual(plan.payload.tasks, skillPlan, "same plan as the skill");
+    assert.deepEqual(
+      validatePlan(plan.payload.tasks, "claude-native").map((t) => t.task_id),
+      ["direction", "first-screen", "build-out"],
+    );
+    for (const value of [progress, plan]) {
+      command(value);
+      assert.equal(value.payload.token, "TOKEN_FROM_ASSIGNMENT_FILE");
+      assert.equal(value.payload.task_id, "plan");
+    }
+    assert.equal(progress.payload.kind, "progress");
+    assert.equal(plan.payload.kind, "plan");
+    assert.equal(plan.payload.sequence, progress.payload.sequence + 1);
+    const template = JSON.parse(await run.read("pm-assignment.json"));
+    assert.equal(template.payload.token, token);
+    assert.deepEqual(template.payload.tasks, skillPlan);
+
+    await send(plan, "plan.json");
+    assert.deepEqual(
+      current(run.b.store.state.projects.A).tasks.map((t) => t.task_id),
+      ["plan", "direction", "first-screen", "build-out"],
+    );
+    await run.b.tick();
+    const directionText = await taskText(run.h, 1);
+    assert.equal(directionText.includes(token), false);
+    const [step, done, preview] = blocks(directionText);
+    for (const value of [step, done, preview]) command(value);
+    assert.equal(step.payload.task_id, "direction");
+    assert.equal(step.payload.kind, "progress");
+    assert.ok(step.payload.sequence > plan.payload.sequence);
+    assert.equal(done.payload.kind, "completed");
+    assert.equal(done.payload.sequence, step.payload.sequence + 1);
+    assert.equal(preview.type, "preview-start");
+    assert.ok(preview.payload.argv.some((x: string) => x.includes("{port}")));
+    await send(step, "progress.json");
+    await send(done, "done.json");
+    const r = current(run.b.store.state.projects.A);
+    assert.equal(
+      r.tasks.find((t) => t.task_id === "direction")!.status,
+      "completed",
+    );
+  } finally {
+    await run.close();
+  }
+});
+
+test("S10 PM command lines run in sh and zsh when the project path holds spaces, quotes and $", async () => {
+  const odd = "it's $HOME a dir";
+  const run = await launch(async (f) => {
+    const submit = f.submit;
+    f.submit = (id = "A") => {
+      const c = submit(id);
+      c.payload.directory = path.join(f.root, "projects", odd, id);
+      return c;
+    };
+  });
+  try {
+    assert.ok(run.dir.includes(odd));
+    const cli = path.join(run.dir, "broker-cli");
+    const env = await cliEnv(run.f.root);
+    const shells: string[] = [];
+    for (const sh of ["/bin/sh", "/bin/zsh"])
+      if (
+        await fs.access(sh).then(
+          () => true,
+          () => false,
+        )
+      )
+        shells.push(sh);
+    const pm = await run.read("pm-instructions.md");
+    const media = await nativePrompt(
+      { ...run.f.config, mcp: {} as any },
+      run.p,
+      current(run.p),
+      "",
+      await studioPlugin(),
+    );
+    const plan = await taskText(run.h, 0);
+    // Every command line starts with the wrapper path as one quoted word; the
+    // bare path, which a shell would split, is never shown.
+    const lines = new Map<string, string>();
+    for (const text of [pm, media, plan]) {
+      assert.equal(text.includes(cli), false);
+      for (const m of text.matchAll(
+        /((?:'[^']*'|\\')+) (report|preview start|media request) --file <[^>]+>/g,
+      )) {
+        assert.equal(m[1], shellQuote(cli));
+        lines.set(m[2], m[0]);
+      }
+    }
+    assert.deepEqual([...lines.keys()].sort(), [
+      "media request",
+      "preview start",
+      "report",
+    ]);
+    for (const sh of shells) {
+      const help = await shell(sh, `${shellQuote(cli)} help`, env);
+      assert.equal(help.code, 0, `${sh}: ${help.stderr}`);
+      assert.match(help.stdout, /homepage session broker/);
+    }
+
+    // The report line from the task file, with only <file> replaced, sends the
+    // plan; the same file again is an idempotent re-check, not a second plan.
+    const line = /^ {4}(.+ report --file <file>)$/m.exec(plan)![1];
+    const token = current(run.b.store.state.projects.A).agents[0].token;
+    const file = path.join(run.f.root, `${odd} plan.json`);
+    await fs.writeFile(file, filled(blocks(plan)[1], token));
+    const results = [];
+    for (const sh of shells) {
+      const sent = await shell(
+        sh,
+        line.replace("<file>", shellQuote(file)),
+        env,
+      );
+      assert.equal(sent.code, 0, `${sh}: ${sent.stderr}`);
+      results.push(JSON.parse(sent.stdout));
+    }
+    for (const result of results) assert.equal(result.accepted, true);
+    // Sent once: one plan, and the sequence is the plan's.
+    assert.equal(current(run.b.store.state.projects.A).tasks.length, 4);
+    assert.equal(
+      current(run.b.store.state.projects.A).agents[0].seq,
+      blocks(plan)[1].payload.sequence,
+    );
+
+    // preview start and media request reach the CLI with their subcommand and
+    // file intact: a report file is refused as the wrong type, not as a path.
+    for (const kind of ["preview start", "media request"])
+      for (const sh of shells) {
+        const sent = await shell(
+          sh,
+          lines.get(kind)!.replace(/<[^>]+>$/, shellQuote(file)),
+          env,
+        );
+        assert.equal(sent.code, 2, `${sh} ${kind}: ${sent.stderr}`);
+        assert.match(sent.stderr, /command_mismatch/);
+      }
+  } finally {
+    await run.close();
+  }
+});
+
+test("S11 report sequences count up across progress counts, a stale completed and a resumed assignment", async () => {
+  const run = await launch();
+  let b = run.b;
+  try {
+    const cli = shellQuote(path.join(run.dir, "broker-cli"));
+    const env = await cliEnv(run.f.root);
+    const state = () => current(b.store.state.projects.A);
+    const token = state().agents[0].token;
+    const status = (id: string) =>
+      state().tasks.find((t) => t.task_id === id)!.status;
+    let sent = 0;
+    const send = async (value: any, sequence?: number) => {
+      const file = path.join(run.f.root, `report-${++sent}.json`);
+      await fs.writeFile(file, filled(value, token, sequence));
+      return shell("/bin/sh", `${cli} report --file ${shellQuote(file)}`, env);
+    };
+    const accepted = async (value: any, sequence?: number) => {
+      const r = await send(value, sequence);
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(JSON.parse(r.stdout).accepted, true);
+    };
+    let prompts = 0;
+    const next = async () => blocks(await taskText(run.h, prompts++));
+
+    // No progress: the plan and completed examples go out as written.
+    await accepted((await next())[1]);
+    await b.tick();
+    await accepted((await next())[1]);
+    assert.equal(status("direction"), "completed");
+    await b.tick();
+    // One progress, then the completed example as written.
+    const [step, done] = await next();
+    await accepted(step);
+    await accepted(done);
+    assert.equal(status("first-screen"), "completed");
+    await b.tick();
+
+    // A broker restart and resume re-dispatch build-out with a new assignment
+    // whose examples start above the last accepted sequence, not from 1.
+    const [before] = await next();
+    await accepted(before);
+    const last = state().agents[0].seq;
+    await b.close();
+    b = new Broker(run.f.config, run.h);
+    await b.start(false);
+    clearInterval(b.timer);
+    assert.equal(state().reason, "broker_restarted");
+    await b.tick();
+    await b.handle(cmd("resume", b.store.state.projects.A));
+    for (let i = 0; i < 3; i++) await b.tick();
+    const [again, finish] = await next();
+    assert.notEqual(again.payload.assignment_id, before.payload.assignment_id);
+    assert.equal(again.payload.sequence, last + 1);
+    assert.equal(finish.payload.sequence, last + 2);
+    const template = JSON.parse(await run.read("pm-assignment.json"));
+    assert.equal(template.payload.sequence, last + 1);
+
+    // Several progress reports: the completed example's number is now stale
+    // and refused; one above the last accepted report is taken.
+    await accepted(again);
+    await accepted(again, last + 2);
+    const stale = await send(finish);
+    assert.equal(stale.code, 2);
+    assert.match(stale.stderr, /stale_sequence/);
+    assert.equal(status("build-out"), "running");
+    await accepted(finish, state().agents[0].seq + 1);
+    assert.equal(status("build-out"), "completed");
+  } finally {
+    await b.close();
+    await fs.rm(run.f.root, { recursive: true, force: true });
+  }
+});
+
+test("S12 look.py keeps a fixed CTA inside a transformed section, names hidden bars and drawers and restores styles when its fix fails", async (t) => {
+  // Skips name the python3 that was tried; only a missing python3, Playwright
+  // or Chromium skips.
+  const info = await exec("python3", [
+    "-c",
+    "import sys; print(sys.executable, sys.version.split()[0])",
+  ]).then(
+    (r) => ({ missing: false, text: `python3 ${r.stdout.trim()}` }),
+    (e) => ({
+      missing: e.code === "ENOENT",
+      text: `python3 (${e.stderr || e.message})`.trim(),
+    }),
+  );
+  if (info.missing) return t.skip("python3 is not installed");
+  const python = info.text;
+  const imported = await exec("python3", [
+    "-c",
+    "import playwright.sync_api",
+  ]).then(
+    () => "",
+    (e) => (e.stderr as string) || String(e.message),
+  );
+  if (/ModuleNotFoundError: No module named 'playwright'/.test(imported))
+    return t.skip(`Python Playwright is not installed for ${python}`);
+  assert.equal(
+    imported,
+    "",
+    `${python} cannot import Playwright:\n${imported}`,
+  );
+  const html = await fs.readFile(
+    path.resolve("tests/fixtures/look-fixed.html"),
+  );
+  // #fail-states pages send the style attributes they see after the restore.
+  const styles: { width: number; before: unknown; after: unknown }[] = [];
+  const server = http.createServer((req, res) => {
+    if (req.url?.startsWith("/styles?")) {
+      styles.push(JSON.parse(decodeURIComponent(req.url.slice(8))));
+      res.writeHead(204);
+      return res.end();
+    }
+    const ok = req.url === "/look-fixed.html";
+    res.writeHead(ok ? 200 : 404, {
+      "content-type": "text/html; charset=utf-8",
+    });
+    res.end(ok ? html : "");
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const root = await fs.mkdtemp("/private/tmp/hp-look-");
+  try {
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/look-fixed.html`;
+    // The fixture's hash picks the mode: #fail-fix makes the fix throw,
+    // #fail-undo also blocks restoring the saved inline styles.
+    const look = async (mode: string, ...args: string[]) => {
+      const out = path.join(root, mode);
+      const run = await exec("python3", [
+        path.join(repoPlugin, lookScript),
+        `${url}#${mode}`,
+        out,
+        ...args,
+      ]).then(
+        (r) => ({ code: 0, stdout: r.stdout, stderr: r.stderr }),
+        (e) => ({
+          code: e.code as number,
+          stdout: (e.stdout as string) ?? "",
+          stderr: (e.stderr as string) ?? "",
+        }),
+      );
+      const report =
+        run.code === 0
+          ? JSON.parse(await fs.readFile(path.join(out, "issues.json"), "utf8"))
+          : undefined;
+      return { ...run, out, report };
+    };
+    const [normal, reduced, fix, undo, states, late] = await Promise.all([
+      look("normal"),
+      look("reduced", "--reduced-motion"),
+      look("fail-fix"),
+      look("fail-undo"),
+      look("fail-states"),
+      look("timeout"),
+    ]);
+    // Exit 3 skips only when Playwright says its browser is not downloaded;
+    // any other launch failure fails with look.py's message.
+    if (normal.code === 3 && /Executable doesn't exist/.test(normal.stderr))
+      return t.skip(`Playwright Chromium is not installed for ${python}`);
+    assert.notEqual(normal.code, 3, `${python}: ${normal.stderr}`);
+    const palette = {
+      cta: [176, 0, 32],
+      bar: [0, 160, 80],
+      dock: [23, 55, 145],
+      drawer: [255, 136, 0],
+    };
+    const shot = (run: typeof normal, file: string) =>
+      colors(path.join(run.out, file), palette);
+
+    for (const run of [normal, reduced]) {
+      assert.equal(run.code, 0, run.stdout + run.stderr);
+      assert.deepEqual(run.report.issues, []);
+      assert.match(
+        run.stdout,
+        /hidden in full\/parts: div#dock \(appears after scrolling, in no screenshot\), aside#drawer \(not observed on screen while scrolling\)/,
+      );
+      assert.doesNotMatch(run.stdout, /closed:|never on screen/);
+      for (const name of ["desktop", "mobile"]) {
+        const fixed = run.report.viewports[name].full_page_positions;
+        const by = Object.fromEntries(
+          fixed.elements.map((e: any) => [e.selector, e]),
+        );
+        assert.equal(fixed.elements_total, 7);
+        assert.equal(by["button#local-cta"].action, "left_as_is");
+        assert.equal(
+          by["button#local-cta"].reason,
+          "placed in section.panel (transform), not in the viewport",
+        );
+        // preserve-3d is not in the ancestor scan: offsetParent alone, or the
+        // two signals naming different ancestors, is recorded as unclear.
+        assert.deepEqual(
+          [by["b#tail-3d"], by["b#panel-3d"]].map((e) => [e.action, e.reason]),
+          [
+            [
+              "left_as_is",
+              "unclear whether it is fixed to the viewport: offsetParent div.flat3d, nearest ancestor with a containing property none",
+            ],
+            [
+              "left_as_is",
+              "unclear whether it is fixed to the viewport: offsetParent div.flat3d, nearest ancestor with a containing property section.panel (transform)",
+            ],
+          ],
+        );
+        assert.equal(by["div#dock"].action, "hidden");
+        assert.equal(by["div#dock"].seen_while_scrolling, true);
+        assert.equal(by["aside#drawer"].action, "hidden");
+        assert.equal(by["aside#drawer"].seen_while_scrolling, false);
+        assert.match(
+          by["aside#drawer"].reason,
+          /not observed on screen at the scroll positions checked/,
+        );
+        assert.equal(by["div#call-bar"].action, "page_bottom");
+        assert.equal(by.header.action, "in_flow");
+        assert.ok((await shot(run, `${name}-full.png`)).cta.n > 5000, name);
+      }
+    }
+    for (const name of ["desktop", "mobile"]) {
+      const v = normal.report.viewports[name];
+      // The first viewport is the page as the visitor sees it.
+      const first = await shot(normal, `${name}.png`);
+      assert.ok(first.bar && !first.dock && !first.drawer && !first.cta, name);
+      // Full page: the CTA stays in its section, the call bar sits at the
+      // bottom, the dock and drawer are left out; parts slice the same page.
+      const full = await shot(normal, `${name}-full.png`);
+      assert.ok(full.cta.n > 5000 && !full.dock && !full.drawer, name);
+      assert.ok(full.bar.top > v.page_height - 100, name);
+      const parts = await Promise.all(
+        v.screenshots.parts.map((f: string) => shot(normal, f)),
+      );
+      assert.equal(
+        parts.reduce((n, p) => n + (p.cta?.n ?? 0), 0),
+        full.cta.n,
+      );
+      assert.ok(parts.every((p) => !p.dock && !p.drawer));
+    }
+
+    // The fix throws at its first hide: the saved styles go back, so the call
+    // bar is where the visitor sees it, and both outputs say so.
+    assert.equal(fix.code, 0, fix.stdout);
+    assert.match(
+      fix.stdout,
+      /full\/parts: WARNING layout fix failed, restored to the page as is/,
+    );
+    // Restoring is blocked too: the partly changed page is flagged unreliable.
+    assert.equal(undo.code, 0, undo.stdout);
+    assert.match(
+      undo.stdout,
+      /full\/parts: WARNING layout fix failed, full and parts are unreliable/,
+    );
+    for (const name of ["desktop", "mobile"]) {
+      const restored = fix.report.viewports[name];
+      assert.equal(restored.full_page_positions.restored, true);
+      assert.match(
+        restored.full_page_positions.error,
+        /injected layout fix failure/,
+      );
+      assert.ok(
+        (await shot(fix, `${name}-full.png`)).bar.bottom < restored.height,
+        name,
+      );
+      const broken = undo.report.viewports[name];
+      assert.equal(broken.full_page_positions.restored, false);
+      assert.match(
+        broken.full_page_positions.restore_error,
+        /injected restore failure/,
+      );
+      assert.ok(
+        (await shot(undo, `${name}-full.png`)).bar.top >
+          broken.page_height - 100,
+        name,
+      );
+    }
+    assert.deepEqual(
+      fix.report.issues.map((i: string) => i.split(":")[0]),
+      ["desktop", "mobile"],
+    );
+    assert.match(
+      fix.report.issues[0],
+      /full\/parts layout fix failed \(injected layout fix failure\); styles were restored/,
+    );
+    assert.match(
+      undo.report.issues[1],
+      /could not be undone \(injected restore failure\); full and parts show a partly changed page, do not trust them/,
+    );
+
+    // The restore seen from the page: an absent, an empty and a set style
+    // attribute are each back as they were, in both viewports.
+    assert.equal(states.code, 0, states.stdout + states.stderr);
+    const seen = new Map(styles.map((s) => [s.width, s]));
+    assert.deepEqual(
+      [...seen.keys()].sort((a, b) => a - b),
+      [390, 1440],
+    );
+    for (const s of seen.values()) {
+      assert.deepEqual(s.before, [null, "", "position: sticky; bottom: 0"]);
+      assert.deepEqual(s.after, s.before);
+    }
+    for (const v of Object.values(states.report.viewports) as any[])
+      assert.equal(v.full_page_positions.restored, true);
+
+    // A scroll that ran out of time: not seen is reported as incomplete.
+    assert.equal(late.code, 0, late.stdout + late.stderr);
+    assert.match(
+      late.stdout,
+      /aside#drawer \(not observed while scrolling; scroll timed out, incomplete\)/,
+    );
+    for (const v of Object.values(late.report.viewports) as any[]) {
+      assert.equal(v.scroll.timed_out, true);
+      const drawer = v.full_page_positions.elements.find(
+        (e: any) => e.selector === "aside#drawer",
+      );
+      assert.match(
+        drawer.reason,
+        /the scroll ran out of time, so this observation is incomplete/,
+      );
+    }
+  } finally {
+    server.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("S13 the look line and the legacy CLI sentence run in sh and zsh when paths hold spaces, quotes and $", async (t) => {
+  const odd = "it's $HOME a dir";
+  const before = studio.dir;
+  let plugin = "";
+  let run: Awaited<ReturnType<typeof launch>> | undefined;
+  try {
+    // The plugin copy (look.py) and the project both sit under the odd path.
+    run = await launch(async (f) => {
+      plugin = path.join(f.root, odd, "plugin");
+      await fs.cp(repoPlugin, plugin, { recursive: true });
+      studio.dir = plugin;
+      const submit = f.submit;
+      f.submit = (id = "A") => {
+        const c = submit(id);
+        c.payload.directory = path.join(f.root, "projects", odd, id);
+        return c;
+      };
+    });
+    assert.ok(run.dir.includes(odd));
+    const env = await cliEnv(run.f.root);
+    const shells: string[] = [];
+    for (const sh of ["/bin/sh", "/bin/zsh"])
+      if (
+        await fs.access(sh).then(
+          () => true,
+          () => false,
+        )
+      )
+        shells.push(sh);
+
+    // The look line: both paths quoted, the PM fills in only the URL and the
+    // round, which stay outside the quotes.
+    const guide = await run.read("homepage-orchestration.md");
+    const look = path.join(plugin, lookScript);
+    const out = path.join(run.dir, "reports/look");
+    const line = /Run: (python3 .+\/<round>) \(add --reduced-motion/.exec(
+      guide,
+    )![1];
+    assert.equal(
+      line,
+      `python3 ${shellQuote(look)} <preview URL> ${shellQuote(out)}/<round>`,
+    );
+    assert.equal(guide.includes(look), false);
+    const url = "http://127.0.0.1:9/";
+    const filled = (round: string) =>
+      line.replace("<preview URL>", url).replace("<round>", round);
+    // A stand-in for python3 prints the words it got: the script, the URL and
+    // the round's directory arrive as three intact arguments.
+    const sink = path.join(run.f.root, "argv-sink");
+    await fs.writeFile(sink, '#!/bin/sh\nprintf "%s\\n" "$@"\n', {
+      mode: 0o700,
+    });
+    for (const sh of shells)
+      for (const round of ["1", "final"]) {
+        const sent = await shell(
+          sh,
+          filled(round).replace(/^python3 /, `${shellQuote(sink)} `),
+          env,
+        );
+        assert.equal(sent.code, 0, `${sh}: ${sent.stderr}`);
+        assert.deepEqual(sent.stdout.trimEnd().split("\n"), [
+          look,
+          url,
+          path.join(out, round),
+        ]);
+      }
+    // The real python3 finds the quoted look.py; --help only prints usage.
+    const python = await exec("python3", ["--version"]).then(
+      () => true,
+      () => false,
+    );
+    if (!python) t.diagnostic("python3 not found: look.py --help not run");
+    else
+      for (const sh of shells) {
+        const help = await shell(sh, `${filled("1")} --help`, env);
+        assert.equal(help.code, 0, `${sh}: ${help.stderr}`);
+        assert.match(help.stdout, /usage: look\.py/);
+      }
+
+    // Legacy pm-led runs: node, cli.js and the socket are each one quoted
+    // word. Only stateRoot can move in a test; it puts the odd path in the
+    // socket.
+    const c = { ...run.f.config, stateRoot: path.join(run.f.root, odd, "st") };
+    const legacy = await rolePrompt(
+      c,
+      run.p,
+      {
+        ...current(run.p),
+        run_id: "legacy",
+        orchestration: {
+          mode: "pm-led",
+          team_requested: false,
+          requested_by: null,
+          requested_at: null,
+        },
+      },
+      { role: "pm" } as Agent,
+    );
+    const cli = /The available CLI is (.+?)\. Use --socket (.+?)\. Each/.exec(
+      legacy,
+    )!;
+    assert.ok(brokerSocket(c).includes(odd));
+    assert.deepEqual(
+      [cli[1], cli[2]],
+      [
+        `${shellQuote(process.execPath)} ${shellQuote(fileURLToPath(new URL("../src/cli.js", import.meta.url)))}`,
+        shellQuote(brokerSocket(c)),
+      ],
+    );
+    for (const sh of shells) {
+      const help = await shell(sh, `${cli[1]} --socket ${cli[2]} help`, env);
+      assert.equal(help.code, 0, `${sh}: ${help.stderr}`);
+      assert.match(help.stdout, /homepage session broker/);
+    }
+  } finally {
+    studio.dir = before;
+    await run?.close();
   }
 });

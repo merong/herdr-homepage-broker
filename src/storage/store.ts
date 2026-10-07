@@ -29,7 +29,11 @@ export function canonical(v: any): string {
     );
   return JSON.stringify(v);
 }
-export async function atomic(file: string, value: string | Buffer) {
+export async function atomic(
+  file: string,
+  value: string | Buffer,
+  mode = 0o600,
+) {
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   try {
     if ((await fs.lstat(file)).isSymbolicLink())
@@ -38,7 +42,7 @@ export async function atomic(file: string, value: string | Buffer) {
     if (e.code !== "ENOENT") throw e;
   }
   const tmp = file + "." + randomUUID() + ".tmp";
-  const f = await fs.open(tmp, "wx", 0o600);
+  const f = await fs.open(tmp, "wx", mode);
   try {
     await f.writeFile(value);
     await f.sync();

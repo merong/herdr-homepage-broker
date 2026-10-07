@@ -21,7 +21,7 @@ herdr --session homepage
 별도 터미널에서 플러그인을 설치합니다.
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.0 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.1 --yes
 ```
 
 `homepage` 작업공간에서 시작합니다. 작업공간이 없다면 `herdr --session homepage workspace create --cwd "$HOME" --label homepage-control --focus`로 만듭니다.

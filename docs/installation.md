@@ -17,7 +17,7 @@ Herdr가 없다면 [공식 설치 안내](https://herdr.dev/)를 따릅니다. `
 ## GitHub 릴리스 설치
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.0 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.1 --yes
 ```
 
 설치가 의존성 설치와 TypeScript·정적 UI 빌드를 실행합니다. `dist`와 `node_modules`는 Git에 포함하지 않습니다. `--ref`를 고정하면 재현 가능한 버전을 설치할 수 있습니다.
@@ -67,11 +67,11 @@ Herdr 0.9.3에는 `plugin update`가 없습니다. 원하는 Git 태그로 `plug
 
 ```sh
 herdr --session homepage plugin action invoke stop --plugin herdr-homepage-broker
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.0 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.1 --yes
 herdr --session homepage plugin action invoke start --plugin herdr-homepage-broker
 ```
 
-`v0.9.0`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
+`v0.9.1`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
 
 이미 실행 중인 Claude PM에는 새 플러그인을 강제로 주입하거나 재시작하지 않습니다. 새 프로젝트 또는 피드백으로 생성한 새 run의 PM부터 0.9.0 워크플로를 사용합니다. 기존 run의 pane·진행 기록은 유지합니다. 0.8.0에서 시작해 아직 진행 중인 run은 재개하지 말고 업데이트 전에 마무리하거나, 업데이트 후 취소하고 새 run으로 다시 시작합니다. 0.8.0 지침이 가리키던 helper와 스킬 파일이 0.9.0 플러그인에는 없습니다.
 

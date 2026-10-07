@@ -7,6 +7,7 @@
 - **한 문장에는 한 가지만 담는다.** 제목은 15자 안팎, 본문 문단은 2~3문장으로 쓴다.
 - **문체는 해요체나 합니다체 중 하나로 통일한다.**
 - **CTA는 행동 동사로 쓴다.** 예: "견적 보기", "예약 문의 남기기". "자세히 보기"는 무엇을 보는지 알 수 있을 때만 쓴다.
+- **폼 필드에 입력 조건이 있으면 그 필드 옆 도움말에 미리 적는다.** 예: 서비스 지역, 가능 날짜, 최소 수량. 고객이 제출하기 전에 읽을 수 있어야 한다. 오류 문구는 그대로 둔다.
 - **AI 티가 나는 표현은 사실로 바꾼다.** 아래와 같은 표현이 보이면 입력 속 사실로 바꿔 쓴다.
   - "새로운 기준", "~을 넘어", "단순한 ~이 아닌", "당신의 일상을 바꿀"
   - 셋씩 나열하는 문장의 반복
@@ -30,14 +31,19 @@
 - 성격은 제목 서체가 만든다. 한 패밀리의 웨이트 대비(800 대 400)만으로 충분한 경우가 많다. 서체는 두 종류를 넘기지 않는다.
 
 ```css
-:root { word-break: keep-all; overflow-wrap: break-word; }
-body { font-size: 17px; line-height: 1.7; letter-spacing: -0.01em; }
+:root { word-break: keep-all; overflow-wrap: break-word;
+  --fs-xs: .8125rem; --fs-sm: .9375rem; --fs-base: 1.0625rem; --fs-md: 1.25rem; --fs-lg: 1.625rem;
+  --fs-xl: clamp(2rem, 2.5vw + 1.25rem, 3.25rem); --fs-h1: clamp(2.25rem, 6vw + 1rem, 5.5rem); }
+body { font-size: var(--fs-base); line-height: 1.7; letter-spacing: -0.01em; }
 h1, h2 { line-height: 1.25; letter-spacing: -0.03em; text-wrap: balance; }
 p { text-wrap: pretty; }
-.price, .num { font-variant-numeric: tabular-nums; }
-h1 { font-size: clamp(2.25rem, 6vw + 1rem, 5.5rem); }
+.num { font-variant-numeric: tabular-nums; }
+h1 { font-size: var(--fs-h1); } h2 { font-size: var(--fs-xl); }
 ```
 
+- 글자 크기는 위처럼 `:root` 변수 6~8단계로 먼저 정하고, 그 밖의 값을 쓰지 않는다. h1의 `clamp`도 그 스케일의 한 단계다.
+- 가격·치수·수량 숫자는 모두 같은 숫자 클래스(`.num`)를 붙여 `tabular-nums`로 맞춘다.
+- 나란히 비교하는 같은 역할의 숫자(예: 수종별 가격)는 설명 길이가 달라도 같은 기준선에 둔다. SVG·transform 안 글자는 선언한 값이 아니라 화면에 보이는 크기로 판단해 스케일에 맞추고, 보조 치수와 라벨도 확대 없이 읽히게 한다.
 - 휴대폰 본문은 16~17px로 한다. 제목은 390px에서 3줄을 넘지 않게 한다.
 - 영문 워드마크나 라틴 서체를 섞을 때는 `unicode-range`로 한글에 적용되지 않게 한다.
 
