@@ -221,6 +221,7 @@ export class Store {
       "task.json": { ...common, tasks: r.tasks },
       "agents.json": {
         ...common,
+        orchestration_mode: r.orchestration?.mode ?? "legacy",
         agents: r.agents.map(({ token, seq, ...a }) => ({
           ...a,
           project_id: p.project_id,

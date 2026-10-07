@@ -37,6 +37,7 @@ import {
 } from "../domain/engine.js";
 import { Herdr, HerdrRejected, Lines, Observer } from "../herdr/transport.js";
 import { rolePrompt, claudeArgs, assignment } from "../agents/prompts.js";
+import { studioPlugin } from "../agents/studio.js";
 import { Mcp, field } from "../media/mcp.js";
 import {
   startPreview,
@@ -604,6 +605,11 @@ export class Broker {
   }
   async setup(p: Project, r: Run) {
     if (!this.config.allowExecution) return;
+    // Checked before any Herdr dispatch; native PMs never launch without it.
+    const plugin =
+      r.orchestration?.mode === "claude-native"
+        ? await studioPlugin()
+        : undefined;
     await this.herdr.doctor();
     await prepareRuntime(
       this.config,
@@ -707,10 +713,9 @@ export class Broker {
             "30000",
             "--",
             ...claudeArgs(
-              r.orchestration?.mode === "claude-native"
-                ? undefined
-                : systemFile,
+              plugin ? undefined : systemFile,
               !this.config.mcp,
+              plugin?.path,
             ),
           ]),
         (v) => {

@@ -2,6 +2,8 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { Config, roles, fail } from "../contracts/types.js";
 import { atomic, realDirectory } from "../storage/store.js";
+import { injectedSkills } from "../config.js";
+import { studio, studioAgents } from "../agents/studio.js";
 
 // Broker-owned metadata only. Never rewrite PRD/design, credentials or Claude settings.
 export async function prepareRuntime(
@@ -24,7 +26,8 @@ export async function prepareRuntime(
             mode,
             bootstrap: "pm",
             herdr_agents: 1,
-            native_agents: ["homepage-developer", "homepage-designer"],
+            plugin: { name: "homepage-studio", path: studio.dir },
+            native_agents: studioAgents,
             helper_limit: { value: 2, enforcement: "prompt" },
             reporting: "pm",
           }
@@ -37,7 +40,7 @@ export async function prepareRuntime(
           },
     max_projects: c.maxProjects,
     start_mode: c.autoStart ? "queue" : "explicit",
-    skills: c.skills,
+    skills: injectedSkills(c, mode),
     higgsfield: {
       transport: c.mcp ? "broker-stdio" : "claude-installed",
       credentials: "inherited-not-copied",

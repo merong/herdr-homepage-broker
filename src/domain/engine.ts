@@ -337,7 +337,7 @@ export async function newRun(
       makeTask(
         "plan",
         "pm",
-        "Read PRD/design and plan website tasks. Execute through this PM session using Claude native homepage-developer/homepage-designer agents when useful. No additional Herdr panes.",
+        "Read PRD/design and plan website tasks. Execute through this PM session with the homepage-studio skills and its native helper agents when useful. No additional Herdr panes.",
       ),
     ],
     questions: [],

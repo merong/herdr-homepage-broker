@@ -34,6 +34,8 @@ const reasons = {
   operation_unknown: "외부 요청의 접수 여부를 확인해야 합니다.",
   resource_missing: "에이전트 실행 자원을 찾을 수 없습니다.",
   resource_owner_mismatch: "실행 자원의 소유 정보가 일치하지 않습니다.",
+  studio_plugin_missing:
+    "homepage-studio 플러그인을 찾을 수 없습니다. 플러그인을 다시 설치한 후 작업을 재개하세요.",
 };
 let snapshot,
   filter = "all",
@@ -333,7 +335,7 @@ function projectDetail(p) {
       el(
         "p",
         "help",
-        "Herdr PM 1명 · Claude 내부 개발자/디자이너. 내부 작업 진행은 PM 보고로 표시하며, 별도 Herdr pane은 생성하지 않습니다.",
+        "Herdr PM 1명 · Claude 내부 개발자/디자이너/카피. 내부 작업 진행은 PM 보고로 표시하며, 별도 Herdr pane은 생성하지 않습니다.",
       ),
     );
   if (p.orchestration?.mode === "pm-led")

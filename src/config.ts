@@ -109,16 +109,23 @@ export async function config(file?: string): Promise<Config> {
       "session_mismatch",
       "Socket must address sessions/homepage/herdr.sock",
     );
-  if (!c.skills.length) c.skills = await discoverHomepageSkills();
+  // Explicit skills stay in c.skills; only legacy runs fall back to discovery.
+  c.discoveredSkills = c.skills.length ? [] : await discoverHomepageSkills();
   return c;
 }
-export async function discoverHomepageSkills(
-  claudeRoot = process.env.CLAUDE_CONFIG_DIR ??
-    path.join(os.homedir(), ".claude"),
-) {
+export const claudeRoot = () =>
+  process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
+export const injectedSkills = (
+  c: Config,
+  mode: "claude-native" | "pm-led" | "legacy",
+) =>
+  mode === "claude-native" || c.skills.length
+    ? c.skills
+    : (c.discoveredSkills ?? []);
+export async function discoverHomepageSkills(root = claudeRoot()) {
   // Only the homepage skill is selected; unrelated installed skills stay disabled.
   for (const name of ["higgsfield-websites", "higgsfield-website-builder"]) {
-    const file = path.join(claudeRoot, "skills", name, "SKILL.md");
+    const file = path.join(root, "skills", name, "SKILL.md");
     try {
       if ((await fs.stat(file)).isFile()) {
         await fs.access(file, fs.constants.R_OK);

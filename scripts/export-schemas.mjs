@@ -13,6 +13,11 @@ const schema = (title, extra, required) => ({
   required: [...Object.keys(common), ...required],
   properties: { ...common, ...extra },
 });
+const role = (name) => ({
+  type: "object",
+  required: ["role"],
+  properties: { role: { const: name } },
+});
 const statuses = [
   "queued",
   "starting",
@@ -46,14 +51,31 @@ const outputs = {
       artifacts: { type: "object" },
       resume_required: { type: "boolean" },
       orchestration: {
-        type: ["object", "null"],
-        required: ["mode", "team_requested", "requested_by", "requested_at"],
-        properties: {
-          mode: { const: "pm-led" },
-          team_requested: { type: "boolean" },
-          requested_by: { type: ["string", "null"] },
-          requested_at: { type: ["string", "null"] },
-        },
+        oneOf: [
+          { type: "null" },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["mode"],
+            properties: { mode: { const: "claude-native" } },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "mode",
+              "team_requested",
+              "requested_by",
+              "requested_at",
+            ],
+            properties: {
+              mode: { const: "pm-led" },
+              team_requested: { type: "boolean" },
+              requested_by: { type: ["string", "null"] },
+              requested_at: { type: ["string", "null"] },
+            },
+          },
+        ],
       },
     },
     [
@@ -105,39 +127,62 @@ const outputs = {
     },
     ["tasks"],
   ),
-  agents: schema(
-    "Agent read projection",
-    {
-      agents: {
-        type: "array",
-        minItems: 3,
-        maxItems: 3,
-        items: {
-          type: "object",
-          required: [
-            "agent_id",
-            "role",
-            "model",
-            "effort",
-            "herdr",
-            "runtime",
-            "status",
-            "waiting_reason",
-          ],
-          properties: {
-            role: { enum: ["pm", "developer", "designer"] },
-            model: { const: "claude-opus-5-5" },
-            effort: { const: "high" },
-            status: {
-              enum: ["ready", "working", "waiting", "stopped", "failed"],
+  agents: {
+    ...schema(
+      "Agent read projection",
+      {
+        orchestration_mode: { enum: ["claude-native", "pm-led", "legacy"] },
+        agents: {
+          type: "array",
+          items: {
+            type: "object",
+            required: [
+              "agent_id",
+              "role",
+              "model",
+              "effort",
+              "herdr",
+              "runtime",
+              "status",
+              "waiting_reason",
+            ],
+            properties: {
+              role: { enum: ["pm", "developer", "designer"] },
+              model: { const: "claude-opus-5-5" },
+              effort: { const: "high" },
+              status: {
+                enum: ["ready", "working", "waiting", "stopped", "failed"],
+              },
+              token: false,
             },
-            token: false,
           },
+          // One native PM, or the fixed three-role pm-led/legacy team.
+          oneOf: [
+            { minItems: 1, maxItems: 1, prefixItems: [role("pm")] },
+            {
+              minItems: 3,
+              maxItems: 3,
+              allOf: ["pm", "developer", "designer"].map((r) => ({
+                contains: role(r),
+                minContains: 1,
+                maxContains: 1,
+              })),
+            },
+          ],
         },
       },
+      ["agents"],
+    ),
+    if: {
+      required: ["orchestration_mode"],
+      properties: { orchestration_mode: { const: "claude-native" } },
     },
-    ["agents"],
-  ),
+    then: { properties: { agents: { maxItems: 1 } } },
+    else: {
+      if: { required: ["orchestration_mode"] },
+      then: { properties: { agents: { minItems: 3 } } },
+    },
+  },
   checkpoint: {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     title: "Broker checkpoint (additional invariants enforced by checkpoint())",

@@ -1,0 +1,8 @@
+{
+  "name": "homepage-studio",
+  "version": "0.8.0",
+  "description": "Local Korean homepage production for the herdr-homepage-broker PM: staged workflow skills, quality gate and bounded developer/designer/copywriter helpers.",
+  "author": {
+    "name": "herdr-homepage-broker"
+  }
+}

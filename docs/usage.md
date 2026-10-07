@@ -60,7 +60,7 @@ TUI 보드도 연결이 끊기면 마지막 수신 상태를 표시하고 같은
 1. **문서 준비**: 실행에 고정된 PRD/design 사본과 해시를 확인합니다.
 2. **플러그인 준비**: 브로커 저장소와 homepage 연결 등 플러그인의 기본 작동 상태를 확인합니다.
 
-초기화·접수·브로커 재시작 시 실행 구성을 자동 준비합니다. 설치된 Claude 홈페이지 스킬을 선택하고 Higgsfield MCP 연결을 재사용하므로 별도 모델 실행 스위치나 stdio 도구 매핑을 입력할 필요가 없습니다. 기존에 명시한 사용자 설정은 유지합니다. 자동 선택할 홈페이지 스킬이 없으면 기본 프로젝트 지침을 사용하며, 실제 도구가 없거나 로그인이 필요하면 작업 중 입력 요청으로 알립니다.
+초기화·접수·브로커 재시작 시 실행 구성을 자동 준비합니다. 신규 실행은 번들 homepage-studio 스킬을 로드하고 Higgsfield MCP 연결을 재사용하므로 별도 모델 실행 스위치나 stdio 도구 매핑을 입력할 필요가 없습니다. 기존에 명시한 사용자 설정은 유지합니다. 필수 번들 파일이 누락되면 재설치를 안내하며, 보조 도구 누락은 실행을 막지 않습니다. 실제 MCP 도구가 없거나 로그인이 필요하면 작업 중 입력 요청으로 알립니다.
 
 웹 요청은 `execute` CLI를 거쳐 현재 project/run에 적용됩니다. 시작을 요청한 프로젝트만 FIFO로 처리하며 최대 2개 슬롯이 차면 대기합니다. 요청 접수와 실제 모델 실행은 구분합니다. 미응답 질문·이미 종료된 run·불명확한 이전 실행은 기존 보호 규칙에 따라 거부하고, 설정 체크와 별개로 해당 사유를 표시합니다.
 
@@ -86,6 +86,20 @@ CLI 사전 점검은 `node dist/src/cli.js project readiness --project ID`입니
 **도움말**에는 프로젝트 초기화, 경로 설정, 상태 의미, 입력 응답, GitHub 설치·태그 업데이트, Herdr 자체 업데이트와 문제 해결이 포함됩니다. 설치·업데이트는 [설치 문서](installation.md)를 참고하세요.
 
 웹 서버는 loopback에서만 동작합니다. 상태 읽기와 초기화·submit·시작/재개 작업을 HTTP로 노출하며 변경 요청은 같은 출처와 CSRF 토큰을 확인합니다. 답변·취소·피드백은 기존 CLI를 사용합니다. 이 웹 서버를 원격 공개용 REST 큐로 사용하지 않습니다.
+
+## 홈페이지 제작 스튜디오 (0.8.0)
+
+- 신규 PM 시작 인자에 `--plugin-dir <설치 checkout>/claude-plugin/homepage-studio`를 추가합니다. 명령줄에는 플러그인 경로만 전달하고 긴 지침은 기존처럼 파일을 읽는 첫 프롬프트로 전달합니다. `.claude/agents`를 새로 쓰지 않습니다.
+- 전용 스킬: homepage-studio, frontend-design, korean-copywriting, korean-typography, asset-kit, quality-gate, seo-basics. 내부 helper: `homepage-studio:homepage-developer`, `homepage-studio:homepage-designer`, `homepage-studio:homepage-copywriter`. Herdr PM pane은 여전히 1개이며, 동시에 helper 2개까지는 프롬프트 지침입니다.
+- 흐름: 리서치 → 디자인 브리프 → 카피덱 → 에셋 → 정적 빌드 → PM 품질 검사 → 수정 1회 → 최종 기록. 자동 검사는 최초 1회와 수정 후 증거 저장 1회로 제한하며 별도 QA 에이전트나 반복 수정 루프는 없습니다.
+- 명시적인 PRD 이미지·영상 수량이 우선입니다. 수량이 없으면 run 전체에 이미지 최대 12장과 히어로 영상 1개를 기본 예산으로 사용합니다. 알 수 없는 제출 결과를 재전송하지 않습니다.
+- `skills-lock.json`에 플러그인 경로·버전·전체 파일 해시를 저장합니다. `agents.json.orchestration_mode`와 JSON 스키마는 PM 1개인 native 실행과 3개 역할인 레거시 실행을 모두 구분합니다.
+- 설치된 Higgsfield 스킬 본문 전체는 신규 run에 자동 주입하지 않으며, 필요한 reference 경로만 안내합니다. 설정의 명시적 `skills`는 계속 지원합니다.
+- `doctor`에서 `studio.plugin`과 보조 도구 상태를 확인합니다. 실행 화면은 필수 스킬·스크립트가 없으면 재설치를 안내하고, 선택 도구 누락은 경고만 표시합니다.
+
+브로커 업데이트가 기존 Claude 프로세스를 재시작하지는 않습니다. 이미 시작한 PM의 도구 목록에 새 번들이 추가됐다고 간주하지 않으며, 새 프로젝트·피드백 run부터 새 로딩 경로를 사용합니다. 아래 0.7.0 절은 이전 구현 기록입니다.
+
+참고: [Claude 플러그인 공식 명세](https://code.claude.com/docs/en/plugins-reference). 제3자 출처·라이선스는 저장소의 `claude-plugin/homepage-studio/THIRD_PARTY_NOTICES.md`에 있습니다.
 
 ## PM 한 명과 프롬프트 초기화 (0.7.0)
 

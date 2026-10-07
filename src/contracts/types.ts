@@ -157,6 +157,7 @@ export interface Config {
   maxProjects: 2;
   maxPreviews: 2;
   skills: string[];
+  discoveredSkills?: string[];
   mcp?: {
     command: string;
     args: string[];

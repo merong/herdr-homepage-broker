@@ -23,10 +23,15 @@
     "run_id": {
       "type": "string"
     },
+    "orchestration_mode": {
+      "enum": [
+        "claude-native",
+        "pm-led",
+        "legacy"
+      ]
+    },
     "agents": {
       "type": "array",
-      "minItems": 3,
-      "maxItems": 3,
       "items": {
         "type": "object",
         "required": [
@@ -63,6 +68,107 @@
             ]
           },
           "token": false
+        }
+      },
+      "oneOf": [
+        {
+          "minItems": 1,
+          "maxItems": 1,
+          "prefixItems": [
+            {
+              "type": "object",
+              "required": [
+                "role"
+              ],
+              "properties": {
+                "role": {
+                  "const": "pm"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "minItems": 3,
+          "maxItems": 3,
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "const": "pm"
+                  }
+                }
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "const": "developer"
+                  }
+                }
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "const": "designer"
+                  }
+                }
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "if": {
+    "required": [
+      "orchestration_mode"
+    ],
+    "properties": {
+      "orchestration_mode": {
+        "const": "claude-native"
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "agents": {
+        "maxItems": 1
+      }
+    }
+  },
+  "else": {
+    "if": {
+      "required": [
+        "orchestration_mode"
+      ]
+    },
+    "then": {
+      "properties": {
+        "agents": {
+          "minItems": 3
         }
       }
     }

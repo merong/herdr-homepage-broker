@@ -4,29 +4,44 @@ import { fileURLToPath } from "node:url";
 import { Agent, Config, Project, Run, Task } from "../contracts/types.js";
 import { atomic, hash } from "../storage/store.js";
 import { nativePrompt } from "./native.js";
-import { brokerSocket } from "../config.js";
+import { studioPlugin, treeHash } from "./studio.js";
+import { brokerSocket, injectedSkills } from "../config.js";
 export async function rolePrompt(c: Config, p: Project, r: Run, a: Agent) {
+  const mode = r.orchestration?.mode ?? "legacy";
   const skills = [];
-  for (const f of c.skills) {
+  for (const f of injectedSkills(c, mode)) {
     const bytes = await fs.readFile(f);
     skills.push({ path: f, sha256: hash(bytes), text: bytes.toString("utf8") });
   }
   const dir = path.join(p.directory, ".herdr/runs", r.run_id);
-  await atomic(
-    path.join(dir, "skills-lock.json"),
-    JSON.stringify(
-      skills.map(({ text, ...s }) => s),
-      null,
-      2,
-    ),
-  );
-  if (r.orchestration?.mode === "claude-native")
+  const lock = skills.map(({ text, ...s }) => s);
+  if (mode === "claude-native") {
+    const plugin = await studioPlugin();
+    const tree = await treeHash(plugin.path);
+    await atomic(
+      path.join(dir, "skills-lock.json"),
+      JSON.stringify(
+        {
+          schema_version: 1,
+          skills: lock,
+          plugin: { ...plugin, tree_sha256: tree.sha256, files: tree.files },
+        },
+        null,
+        2,
+      ),
+    );
     return nativePrompt(
       c,
       p,
       r,
       skills.map((s) => `Source: ${s.path}\n${s.text}`).join("\n\n"),
+      plugin,
     );
+  }
+  await atomic(
+    path.join(dir, "skills-lock.json"),
+    JSON.stringify(lock, null, 2),
+  );
   const orchestration =
     r.orchestration?.mode === "pm-led"
       ? a.role === "pm"
@@ -106,6 +121,7 @@ export async function assignment(
 export const claudeArgs = (
   systemFile: string | undefined,
   installedMcp = false,
+  pluginDir?: string,
 ) => [
   "--model",
   "claude-opus-5-5",
@@ -115,5 +131,6 @@ export const claudeArgs = (
     ? []
     : ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}']),
   "--setting-sources=",
+  ...(pluginDir ? ["--plugin-dir", pluginDir] : []),
   ...(systemFile ? ["--append-system-prompt-file", systemFile] : []),
 ];

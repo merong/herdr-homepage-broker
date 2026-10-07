@@ -20,6 +20,7 @@ import {
 import { Herdr } from "./herdr/transport.js";
 import { detectMcp, Mcp } from "./media/mcp.js";
 import { board } from "./ui/board.js";
+import { studioDoctor } from "./agents/studio.js";
 const exec = promisify(execFile);
 export async function main(argv = process.argv.slice(2)) {
   const opt = (name: string) => {
@@ -189,6 +190,7 @@ export async function main(argv = process.argv.slice(2)) {
         registration: await detectMcp(),
         ...(c.mcp ? { broker: mcp } : {}),
       },
+      studio: await studioDoctor(),
       state_dir: stateDir(c),
       execution_enabled: c.allowExecution,
     });

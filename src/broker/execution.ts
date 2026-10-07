@@ -3,6 +3,8 @@ import { Config, Project, Run } from "../contracts/types.js";
 import { quiescent, unknown } from "../domain/engine.js";
 import { readInputs } from "../storage/store.js";
 import { Herdr } from "../herdr/transport.js";
+import { injectedSkills } from "../config.js";
+import { studioPlugin, studioTools } from "../agents/studio.js";
 export async function executionReadiness(
   config: Config,
   p: Project,
@@ -56,7 +58,20 @@ export async function executionReadiness(
       "homepage 세션에 연결할 수 없습니다. Herdr 세션을 시작하세요.",
     );
   }
-  for (const file of config.skills) {
+  const mode = r.orchestration?.mode ?? "legacy";
+  // Missing helper tools are reported as warnings and never block execution.
+  const warnings: { code: string; detail: string }[] = [];
+  if (mode === "claude-native") {
+    try {
+      await studioPlugin();
+    } catch (e: any) {
+      pluginIssues.push(e.message);
+    }
+    const tools = await studioTools();
+    if (tools.warning)
+      warnings.push({ code: "studio_tools_missing", detail: tools.warning });
+  }
+  for (const file of injectedSkills(config, mode)) {
     try {
       if (!(await fs.stat(file)).isFile()) throw new Error("not a file");
       await fs.access(file, fs.constants.R_OK);
@@ -92,6 +107,7 @@ export async function executionReadiness(
     ready: checks.every((c) => c.ok) && !blockers.length,
     checks,
     blockers,
+    warnings,
     slots_used: state.slots,
     max_slots: config.maxProjects,
     waiting_for_slot: state.slots >= config.maxProjects,

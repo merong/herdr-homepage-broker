@@ -214,7 +214,7 @@
         $("execution-checks").append(row);
       }
       $("execution-note").textContent =
-        `${(info.blockers ?? []).map((b) => b.detail).join(" ")} ${info.waiting_for_slot ? "현재 슬롯이 가득 차 있어 실행 요청 후 큐에서 대기합니다." : ""} ${info.note}`;
+        `${(info.blockers ?? []).map((b) => b.detail).join(" ")} ${(info.warnings ?? []).map((w) => w.detail).join(" ")} ${info.waiting_for_slot ? "현재 슬롯이 가득 차 있어 실행 요청 후 큐에서 대기합니다." : ""} ${info.note}`;
     } catch (e) {
       $("execution-checks").textContent =
         `준비 상태를 확인하지 못했습니다: ${e.message}`;
@@ -355,7 +355,7 @@
     };
     section(
       "1. 프로젝트 초기화와 샘플 요청",
-      "제작 요청 → 샘플 요청 채우기 → 문서와 경로 검토 → 초기화만 또는 초기화 후 전송. 샘플 문서는 Higgsfield 신규 이미지 1장 생성과 job 기록·화면 적용을 필수로 요구합니다. 초기화는 새 폴더와 문서·요청 JSON, 실행 설정을 자동 생성합니다. homepage 세션, PM 1명과 Claude 내부 에이전트 지침, Opus 5.5 high, 설치된 홈페이지 스킬과 Claude MCP가 연결됩니다. 웹 버튼은 broker CLI로 접수하고, 스케줄러가 Herdr CLI의 homepage 세션에서 실행합니다.",
+      "제작 요청 → 샘플 요청 채우기 → 문서와 경로 검토 → 초기화만 또는 초기화 후 전송. 샘플 문서는 Higgsfield 신규 이미지 1장 생성과 job 기록·화면 적용을 필수로 요구합니다. 초기화는 새 폴더와 문서·요청 JSON, 실행 설정을 자동 생성합니다. homepage 세션, PM 1명과 Claude 내부 에이전트 지침, Opus 5.5 high, 번들 homepage-studio 스킬과 Claude MCP가 연결됩니다. 웹 버튼은 broker CLI로 접수하고, 스케줄러가 Herdr CLI의 homepage 세션에서 실행합니다.",
     );
     section(
       "2. 프로젝트 경로와 지속 설정",
@@ -371,7 +371,7 @@
     );
     section(
       "PM 오케스트레이터와 에이전트 구성",
-      "새 실행은 프로젝트마다 Herdr PM pane 하나만 생성합니다. Claude를 최소 옵션으로 실행한 뒤 Herdr agent prompt로 지침 파일과 작업 파일을 읽도록 전달합니다. PM은 직접 작업하거나 같은 Claude 세션 안에서 개발자·디자이너를 활용합니다. 작업별 상태 보고는 PM이 담당합니다. 내부 에이전트의 독립적인 실행 상태는 수집하지 않으며 PM의 진행 보고를 표시합니다. 기존 3개 pane 실행은 보존하고 새 프로젝트·피드백 실행부터 적용합니다.",
+      "새 실행은 프로젝트마다 Herdr PM pane 하나만 생성합니다. Claude를 최소 옵션으로 실행한 뒤 Herdr agent prompt로 지침 파일과 작업 파일을 읽도록 전달합니다. PM은 직접 작업하거나 같은 Claude 세션 안에서 개발자·디자이너·카피 helper를 활용합니다. 신규 PM에 homepage-studio를 명시적으로 로드하며 전용 스킬 7개가 리서치, 브리프, 카피, 에셋, 빌드, 검사와 수정 1회를 안내합니다. 작업별 상태 보고는 PM이 담당합니다. 내부 에이전트의 독립적인 실행 상태는 수집하지 않으며 PM의 진행 보고를 표시합니다. 기존 3개 pane 실행은 보존하고 새 프로젝트·피드백 실행부터 적용합니다.",
     );
     section(
       "3. 상태와 사용자 입력",
@@ -379,7 +379,7 @@
     );
     section(
       "4. 상태 체크와 실행 전제",
-      "제작 시작 또는 작업 재개에서 문서 준비와 플러그인 준비 두 항목만 확인합니다. 실행 구성은 자동 준비되며 설치된 Claude의 Higgsfield MCP를 그대로 사용합니다. 시작한 프로젝트만 실행하고 최대 2개를 넘으면 대기합니다. 별도 stdio MCP 설정은 선택 사항입니다. 메인 화면의 MCP 서버 패널에서 설치된 서버 목록과 Higgsfield 연결을 자동 검사합니다. 최근 결과를 60초간 공유하고 다시 확인 버튼으로 갱신합니다. 연결됨은 접속 검사 결과이며, 각 에이전트의 도구 로딩과 실제 이미지 생성 완료는 작업 보고로 확인합니다. 실제 인증 오류나 미응답 질문은 작업 상태에 표시됩니다.",
+      "제작 시작 또는 작업 재개에서 문서 준비와 플러그인 준비 두 항목만 확인합니다. 실행 구성은 자동 준비되며 설치된 Claude의 Higgsfield MCP를 그대로 사용합니다. 시작한 프로젝트만 실행하고 최대 2개를 넘으면 대기합니다. 별도 stdio MCP 설정은 선택 사항입니다. homepage-studio의 필수 번들 파일이 없으면 재설치를 안내하고, 이미지·영상·폰트·검사 보조 도구 누락은 경고만 표시합니다. 메인 화면의 MCP 서버 패널에서 설치된 서버 목록과 Higgsfield 연결을 자동 검사합니다. 최근 결과를 60초간 공유하고 다시 확인 버튼으로 갱신합니다. 연결됨은 접속 검사 결과이며, 각 에이전트의 도구 로딩과 실제 이미지 생성 완료는 작업 보고로 확인합니다. 실제 인증 오류나 미응답 질문은 작업 상태에 표시됩니다.",
     );
     section(
       "5. 공개 GitHub에서 플러그인 설치",
@@ -393,7 +393,7 @@
     );
     section(
       "7. 플러그인 업데이트",
-      "진행 작업을 먼저 확인합니다. Stop homepage broker 액션은 활성 작업이 있으면 중지를 거부합니다. Herdr 0.9.3에는 plugin update가 없으므로 원하는 태그로 다시 install합니다. localhost 상태·프로젝트는 설치 폴더 밖에 보존됩니다. 재시작 후 미완료 run은 명시적으로 resume해야 합니다. 로컬 link에서 전환 시 link만 해제한 뒤 설치합니다.",
+      "진행 작업을 먼저 확인합니다. Stop homepage broker 액션은 활성 작업이 있으면 중지를 거부합니다. Herdr 0.9.3에는 plugin update가 없으므로 원하는 태그로 다시 install합니다. localhost 상태·프로젝트는 설치 폴더 밖에 보존됩니다. 재시작 후 미완료 run은 명시적으로 resume해야 합니다. 이미 실행 중인 Claude PM에는 새 스킬을 강제로 주입하지 않으며 새 프로젝트·피드백 run부터 적용합니다. 로컬 link에서 전환 시 link만 해제한 뒤 설치합니다.",
       `herdr --session homepage plugin action invoke stop --plugin herdr-homepage-broker\nherdr --session homepage plugin install ${boot.repository} --ref v${boot.version} --yes\nherdr --session homepage plugin action invoke start --plugin herdr-homepage-broker`,
     );
     section(

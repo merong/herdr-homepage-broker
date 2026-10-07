@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { Broker } from "../src/broker/broker.js";
 import { current } from "../src/domain/engine.js";
 import { fixture, pmReport, FakeHerdr, cmd, legacyTeam } from "./helpers.js";
+import { studio } from "../src/agents/studio.js";
 async function setup(ready: boolean | "native" = true) {
   const f = await fixture();
   f.config.autoStart = false;
@@ -511,6 +512,8 @@ test("E11 native PM uses file bootstrap, owns all logical tasks and survives res
       "--effort",
       "high",
       "--setting-sources=",
+      "--plugin-dir",
+      studio.dir,
     ]);
     const bootstrap = f.h.calls.find(
       (c) => c[0] === "agent" && c[1] === "prompt",
@@ -518,14 +521,11 @@ test("E11 native PM uses file bootstrap, owns all logical tasks and survives res
     assert.match(bootstrap, /Initialize this PM session/);
     assert.match(bootstrap, /pm-instructions.md/);
     assert.ok(bootstrap.length < 1200);
-    for (const role of ["developer", "designer"]) {
-      const definition = await fs.readFile(
-        path.join(p.directory, ".claude/agents", `homepage-${role}.md`),
-        "utf8",
-      );
-      assert.match(definition, /model: inherit\neffort: high/);
-      assert.match(definition, /homepage-orchestration.md/);
-    }
+    await assert.rejects(
+      () => fs.stat(path.join(p.directory, ".claude/agents")),
+      /ENOENT/,
+      "helpers come from the plugin, not project files",
+    );
     await assert.rejects(
       () => f.b.handle(pmReport(p, "team-create")),
       /already own/,
@@ -637,7 +637,7 @@ test("E12 native PM requests broker media with its own capability", async () => 
   }
 });
 
-test("E13 native initialization preserves an existing user agent definition", async () => {
+test("E13 native launch leaves existing project agent definitions untouched", async () => {
   const f = await setup("native");
   try {
     const p = f.b.store.state.projects.A;
@@ -649,9 +649,10 @@ test("E13 native initialization preserves an existing user agent definition", as
     await f.b.tick();
     await f.b.tick();
     assert.equal(await fs.readFile(file, "utf8"), "user-owned instructions");
+    assert.deepEqual(await fs.readdir(dir), ["homepage-designer.md"]);
     assert.equal(
       f.h.calls.filter((c) => c[0] === "agent" && c[1] === "start").length,
-      0,
+      1,
     );
   } finally {
     await f.close();
