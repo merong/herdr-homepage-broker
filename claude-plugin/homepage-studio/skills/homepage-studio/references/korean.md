@@ -50,7 +50,7 @@ h1 { font-size: var(--fs-h1); } h2 { font-size: var(--fs-xl); }
 ## SEO 기본
 
 - `<html lang="ko">`
-- `<title>`: "회사명 — 핵심 제공물 한 구" 형식
+- `<title>`: "회사명 | 핵심 제공물 한 구" 형식. em-dash(—)는 쓰지 않는다
 - `meta description`: 80~120자. 입력 속 사실(지역, 제공물, 가격대)을 넣는다.
 - Open Graph: title, description, image. image는 히어로로 1200×630 사본을 만든다. 배포 주소가 없으므로 canonical은 생략한다.
 - 제목 구조: `h1`은 하나, 섹션마다 `h2`를 쓴다.

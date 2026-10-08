@@ -18,6 +18,8 @@ const required = [
   ".claude-plugin/plugin.json",
   "skills/homepage-studio/SKILL.md",
   "skills/frontend-design/SKILL.md",
+  "skills/design-taste/SKILL.md",
+  "skills/high-end-visual-design/SKILL.md",
   lookScript,
 ];
 

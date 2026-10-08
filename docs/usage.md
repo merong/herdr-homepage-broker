@@ -87,6 +87,20 @@ CLI 사전 점검은 `node dist/src/cli.js project readiness --project ID`입니
 
 웹 서버는 loopback에서만 동작합니다. 상태 읽기와 초기화·submit·시작/재개 작업을 HTTP로 노출하며 변경 요청은 같은 출처와 CSRF 토큰을 확인합니다. 답변·취소·피드백은 기존 CLI를 사용합니다. 이 웹 서버를 원격 공개용 REST 큐로 사용하지 않습니다.
 
+## 시각 판단 스킬 추가: taste-skill (0.9.2)
+
+- homepage-studio 플러그인에 [taste-skill](https://github.com/Leonxlnx/taste-skill)(MIT)의 스킬 두 개를 기본으로 넣었습니다. 기존 `frontend-design`은 그대로 둡니다.
+  - **`design-taste`**: taste-skill 기본 스킬 `design-taste-frontend` v2의 홈페이지용 발췌본(약 25KB, 원본 87KB)입니다. 남긴 줄은 원본 문장 그대로이고, 우리 규칙에 맞게 바꾼 줄에는 `[adapted]`를 붙였습니다. Next.js 기본 스택, 디자인 시스템 지도, 외부 이미지·CDN 로고, 다크 모드 필수, 블록 라이브러리, 부록은 뺐습니다.
+  - **`high-end-visual-design`**: taste-skill의 `soft-skill`을 원본 그대로 넣었습니다.
+- **역할**: design-taste로 direction에서 판독 한 줄과 세 다이얼(레이아웃 실험도·모션 강도·정보 밀도)을 정하고, look 회차에서 AI tells와 사전 점검으로 화면을 판정합니다. high-end-visual-design은 고급스러운 질감·여백·버튼·모션을 골라 쓰는 선택지이며 모든 항목을 의무로 적용하지 않습니다. frontend-design은 미적 방향과 구현 완성도를 맡습니다.
+- **우선순위**: 충돌하면 homepage-studio 스킬과 references → design-taste → high-end-visual-design·frontend-design 순으로 따릅니다. 입력에 없는 사실·로고·후기를 쓰지 않고, 로컬 자산만 쓰며, 취향을 묻지 않고, 첫 화면 핵심 문구는 1초 안에 보이고, 한국어 서체는 `references/korean.md`를 따르고, 다크 모드는 요청이 있을 때만 씁니다.
+- **흐름 변화**: `direction.md`에 `판독: … / 다이얼 V·M·D` 한 줄이 늘었습니다. build-out 확인 회차 중 한 번은 design-taste 사전 점검으로 보고, 고른 high-end 기법도 같은 회차에서 확인합니다. 회차 수와 단계는 그대로입니다.
+- **em-dash**: 페이지에 보이는 글자에는 em-dash(—)를 쓰지 않습니다. `<title>` 예시도 `회사명 | 핵심 제공물`로 바꿨습니다.
+- PM이 읽는 스킬 본문이 약 18KB에서 55KB로 늘었습니다. 효과와 제작 시간은 다음 제작에서 확인합니다.
+- 출처, revision, 해시, 바꾼 내역은 `claude-plugin/homepage-studio/THIRD_PARTY_NOTICES.md`에 있습니다. 필수 번들 파일에 두 스킬이 추가되어, 없으면 `studio_plugin_missing`으로 멈춥니다.
+
+**이미 시작한 PM**: 스킬과 PM 지침은 PM을 시작할 때 읽으므로, 업데이트 후 새로 만든 프로젝트·피드백 run부터 적용됩니다.
+
 ## PM 명령 안정성과 화면 확인 보강 (0.9.1)
 
 - **broker-cli 래퍼**: claude-native run은 run 폴더(`.herdr/runs/<run_id>/broker-cli`)에 실행 파일 하나를 만듭니다. node 경로, CLI 경로, 고정 소켓을 담고 있어 PM은 이 경로 하나로 report·preview·media 명령을 보냅니다. zsh에서 여러 단어를 담은 변수가 나뉘지 않아 명령이 실패하던 문제를 막습니다. 래퍼에는 토큰이 없고 토큰은 assignment 파일에만 있습니다.

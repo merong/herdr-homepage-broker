@@ -164,7 +164,7 @@ async function withClaudeRoot<T>(root: string, fn: () => Promise<T>) {
   }
 }
 
-test("S01 homepage-studio plugin ships the lean skill, vendored frontend-design and look.py without helpers", async () => {
+test("S01 homepage-studio plugin ships the lean skill, vendored design skills, the design-taste excerpt and look.py without helpers", async () => {
   const manifest = JSON.parse(
     await fs.readFile(
       path.join(repoPlugin, ".claude-plugin/plugin.json"),
@@ -174,10 +174,22 @@ test("S01 homepage-studio plugin ships the lean skill, vendored frontend-design 
   assert.equal(manifest.name, "homepage-studio");
   assert.equal(typeof manifest.version, "string");
   assert.equal((await studioPlugin()).version, manifest.version);
-  assert.deepEqual((await fs.readdir(path.join(repoPlugin, "skills"))).sort(), [
+  const skills = (await fs.readdir(path.join(repoPlugin, "skills"))).sort();
+  assert.deepEqual(skills, [
+    "design-taste",
     "frontend-design",
+    "high-end-visual-design",
     "homepage-studio",
   ]);
+  for (const skill of skills)
+    assert.match(
+      await fs.readFile(
+        path.join(repoPlugin, "skills", skill, "SKILL.md"),
+        "utf8",
+      ),
+      new RegExp(`^---\\nname: ${skill}\\n`),
+      `${skill} frontmatter name matches its folder`,
+    );
   for (const gone of [
     "agents",
     "skills/asset-kit",
@@ -202,6 +214,62 @@ test("S01 homepage-studio plugin ships the lean skill, vendored frontend-design 
       ),
       `frontend-design ${file} stays byte for byte`,
     );
+  for (const file of ["SKILL.md", "LICENSE"])
+    assert.ok(
+      notices.includes(
+        hash(
+          await fs.readFile(
+            path.join(repoPlugin, "skills/high-end-visual-design", file),
+          ),
+        ),
+      ),
+      `high-end-visual-design ${file} stays byte for byte`,
+    );
+  const tasteDir = path.join(repoPlugin, "skills/design-taste");
+  assert.ok(
+    notices.includes(hash(await fs.readFile(path.join(tasteDir, "LICENSE")))),
+    "design-taste LICENSE stays byte for byte",
+  );
+  const taste = await fs.readFile(path.join(tasteDir, "SKILL.md"), "utf8");
+  assert.equal(
+    notices.includes(hash(taste)),
+    false,
+    "the adapted excerpt's own hash is not pinned",
+  );
+  assert.ok(Buffer.byteLength(taste) <= 25_000, "design-taste stays <= 25KB");
+  const provenance = taste.slice(
+    taste.indexOf("## 출처"),
+    taste.indexOf("\n> "),
+  );
+  assert.match(provenance, /b482f7a970abb98c4108d4a9f761e458c64cefc8/);
+  assert.match(provenance, /\[adapted\]/);
+  for (const external of [
+    /picsum\.photos/,
+    /simpleicons/,
+    /unsplash/,
+    /fonts\.googleapis/,
+    /next\/font/,
+    /next\/image/,
+  ])
+    assert.doesNotMatch(taste, external);
+  // The pre-flight check must not fail one CTA repeated in nav, hero and footer.
+  assert.match(taste, /the same CTA may repeat in nav, hero and footer/);
+  const lean = await fs.readFile(
+    path.join(repoPlugin, "skills/homepage-studio/SKILL.md"),
+    "utf8",
+  );
+  assert.match(
+    lean,
+    /이 스킬과 references → design-taste → high-end-visual-design·frontend-design/,
+  );
+  assert.match(
+    lean,
+    /high-end-visual-design`: [^\n]*선택지이며 모든 항목을 의무로 적용하지 않는다/,
+  );
+  assert.match(
+    lean,
+    /한 회차는 design-taste 14절 사전 점검으로 보고[^\n]*별도 문서나 회차는 더하지 않는다/,
+  );
   const look = await fs.readFile(path.join(repoPlugin, lookScript), "utf8");
   assert.match(look, /^#!\/usr\/bin\/env python3\n/);
   assert.match(
@@ -296,7 +364,12 @@ test("S03 missing plugin blocks readiness and fails before any Herdr dispatch", 
         path.join(repoPlugin, "skills/homepage-studio/SKILL.md"),
         path.join(studio.dir, "skills/homepage-studio/SKILL.md"),
       );
-      for (const file of ["skills/frontend-design/SKILL.md", lookScript]) {
+      for (const file of [
+        "skills/frontend-design/SKILL.md",
+        "skills/design-taste/SKILL.md",
+        "skills/high-end-visual-design/SKILL.md",
+        lookScript,
+      ]) {
         await fs.rm(path.join(studio.dir, file));
         await assert.rejects(studioPlugin(), (e: any) => {
           assert.equal(e.code, "studio_plugin_missing");
@@ -360,7 +433,10 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
     ])
       assert.doesNotMatch(pm, gone);
     assert.match(pm, /Load skill homepage-studio:homepage-studio first/);
-    assert.match(guide, /homepage-studio:frontend-design for visual craft/);
+    assert.match(
+      guide,
+      /for visual craft use homepage-studio:design-taste, homepage-studio:high-end-visual-design and homepage-studio:frontend-design, and on conflict follow the priority set in the homepage-studio skill/,
+    );
     assert.match(
       guide,
       /design, write the copy, generate images and build the site yourself in this one session/,

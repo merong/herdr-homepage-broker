@@ -4,7 +4,7 @@
 
 - 웹 UI에서 샘플 요청 작성 → 디렉터리·PRD/design 초기화 → 브로커 CLI로 큐 접수.
 - Herdr CLI와 Socket API로 최대 2개 프로젝트를 처리. 프로젝트마다 PM pane 하나만 생성합니다. 실행 후 지침 파일을 프롬프트로 전달하고, PM이 디자인·카피·이미지·구현을 직접 진행합니다. 작업 보고와 JSON 상태 갱신도 PM이 담당합니다.
-- Claude Code `claude-opus-5-5`, high effort. homepage-studio 스킬, frontend-design 스킬, 화면 캡처 스크립트 `look.py`를 번들로 제공하고, Claude의 Higgsfield MCP 연결을 재사용.
+- Claude Code `claude-opus-5-5`, high effort. homepage-studio 스킬, 시각 판단 스킬 세 개(design-taste, high-end-visual-design, frontend-design), 화면 캡처 스크립트 `look.py`를 번들로 제공하고, Claude의 Higgsfield MCP 연결을 재사용.
 - `meta.json`, `task.json`, `agents.json` 상태 확인, 동일 요청 재전송 방지, 재시작 후 명시적 재개.
 - 내장 웹 UI: 검색·필터·입력 요청·미리보기·JSON 상태 확인·환경 체크·도움말·제작 시작/작업 재개.
 
@@ -21,7 +21,7 @@ herdr --session homepage
 별도 터미널에서 플러그인을 설치합니다.
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.1 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.2 --yes
 ```
 
 `homepage` 작업공간에서 시작합니다. 작업공간이 없다면 `herdr --session homepage workspace create --cwd "$HOME" --label homepage-control --focus`로 만듭니다.

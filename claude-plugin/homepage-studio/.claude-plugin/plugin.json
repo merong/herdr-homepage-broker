@@ -1,6 +1,6 @@
 {
   "name": "homepage-studio",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Local Korean homepage production for the herdr-homepage-broker PM: a three-task workflow (direction, first screen, build-out) in which the PM designs, writes, generates images and builds the site itself while checking screenshots from look.py.",
   "author": {
     "name": "herdr-homepage-broker"

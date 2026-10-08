@@ -9,7 +9,17 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 
 - 의도를 이해하고, 이미지를 만들고, 화면을 짓고, 화면을 보고 고치는 일을 PM 한 명이 끝까지 한다. 디자인, 카피, 구현은 다른 agent에 넘기지 않는다. 이미지 생성 호출을 병렬로 돌릴 때만 subagent를 쓸 수 있다. 이때 프롬프트와 저장 경로는 PM이 정해서 넘긴다.
 - 문서는 최소로 쓰고 화면은 최대한 자주 본다. 판단은 문서가 아니라 스크린샷을 보고 한다.
-- 시각 판단은 `homepage-studio:frontend-design`을 따른다.
+- 시각 판단에는 세 스킬을 쓴다.
+  - `homepage-studio:design-taste`: direction에서 디자인 판독 한 줄과 세 다이얼을 정하고, look 회차에서 AI tells와 사전 점검으로 화면을 판정한다.
+  - `homepage-studio:high-end-visual-design`: 고급스러운 질감, 여백, 버튼, 모션의 어휘다. 골라 쓰는 선택지이며 모든 항목을 의무로 적용하지 않는다.
+  - `homepage-studio:frontend-design`: 미적 방향과 구현 완성도
+- 충돌하면 이 스킬과 references → design-taste → high-end-visual-design·frontend-design 순으로 따른다. 알려진 충돌은 다음과 같다.
+  - 사실은 입력에서만 가져오고 브랜드 고정 요소는 그대로 쓴다. 자산은 로컬 파일만 쓴다(외부 이미지, CDN, 지어낸 로고·후기 없음).
+  - 취향은 묻지 않는다.
+  - 첫 화면 핵심 문구(h1, 가격, CTA)는 1초 안에 보이고, JS가 없거나 reduced-motion이어도 보인다. high-end-visual-design의 "모든 요소가 800ms 넘게 등장"보다 우선한다.
+  - 한국어 서체와 크기 스케일은 `references/korean.md`를 따른다. 영문 서체 목록은 라틴 보조용이다.
+  - high-end-visual-design의 Double-Bezel, 떠 있는 pill 내비, eyebrow pill, 팔레트 archetype은 선택지다. design-taste의 eyebrow 수 제한과 premium palette check가 우선한다.
+  - 스택은 자유이고, 다크 모드는 요청이 있을 때만 쓴다.
 - references는 필요할 때 연다.
   - `references/motion.md`: 모션
   - `references/images.md`: 이미지 생성·변환·기록
@@ -62,6 +72,7 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 대표 장면: 위 섹션 중 이 회사의 차이를 가장 잘 보여 줄 장면 하나, 그 장면이 화면의 크기·순서·여백을 어떻게 정하는지 한 줄
 ## 이미지 — 파일명: 놓일 곳, 보여 줄 정보, 비율
 ## 시각 방향 — 색, 글자, 모션 아이디어를 각각 한 줄
+판독: <design-taste 0.B 한 줄> / 다이얼 V·M·D
 ## 조정한 입력 — 분위기 제안을 바꿨다면 이유 한 줄
 ```
 
@@ -92,6 +103,7 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
    - 전체 페이지는 `parts/`에 화면 두 개 높이씩 잘린 조각을 위에서 아래로 본다(`desktop-full.png`, `mobile-full.png`는 너무 길어 축소되어 보인다).
    - 세 질문, 섹션마다 할 일, 390px에서 읽히는지, `issues.json`을 확인하고 고친다.
    - 한 회차는 `--reduced-motion`으로 돌린다.
+   - 한 회차는 design-taste 14절 사전 점검으로 보고, high-end-visual-design에서 고른 기법도 같은 회차에서 확인한다. 별도 문서나 회차는 더하지 않는다.
    - 회차 중 한 번은 세 가지를 짚어 본다: 중요 이미지의 원본과 실제 배치(`images.md` 확인 목록으로), 가장 긴 반복 구간의 연속 화면, 숫자가 바뀌는 주 입력을 빠르게 바꿨다 되돌렸을 때의 변화. 본 것은 그 회차 `verdict.md`에 적는다.
 4. 마지막에 `reports/look/final`로 1회 찍는다. 이것은 납품 증거이며, 찍은 뒤에는 고치지 않는다.
 5. `reports/notes.md`에 다음을 적는다.

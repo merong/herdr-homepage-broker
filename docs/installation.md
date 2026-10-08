@@ -17,7 +17,7 @@ Herdr가 없다면 [공식 설치 안내](https://herdr.dev/)를 따릅니다. `
 ## GitHub 릴리스 설치
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.1 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.2 --yes
 ```
 
 설치가 의존성 설치와 TypeScript·정적 UI 빌드를 실행합니다. `dist`와 `node_modules`는 Git에 포함하지 않습니다. `--ref`를 고정하면 재현 가능한 버전을 설치할 수 있습니다.
@@ -41,7 +41,7 @@ herdr --session homepage plugin action invoke web-status --plugin herdr-homepage
 
 - 세션: `homepage`, 동시 프로젝트: 최대 2개.
 - 에이전트: Herdr PM 1명, `claude-opus-5-5`, high. PM이 디자인·카피·이미지·구현을 직접 진행하며 서브에이전트는 이미지 병렬 생성에만 씁니다.
-- 스킬: 설치 checkout의 `claude-plugin/homepage-studio`에 `homepage-studio` 스킬, `frontend-design` 스킬, 스크린샷 스크립트 `look.py`를 포함합니다. 신규 PM에 `--plugin-dir`로 로드합니다. 설치된 Higgsfield 스킬은 필요한 references만 참조하며, 명시적인 `skills` 경로는 추가로 주입합니다. 레거시 run은 기존 Higgsfield 스킬 자동 검색 방식을 유지합니다.
+- 스킬: 설치 checkout의 `claude-plugin/homepage-studio`에 `homepage-studio` 스킬, 시각 판단 스킬 `design-taste`(taste-skill 발췌본)·`high-end-visual-design`(taste-skill 원본)·`frontend-design`, 스크린샷 스크립트 `look.py`를 포함합니다. 신규 PM에 `--plugin-dir`로 로드합니다. 설치된 Higgsfield 스킬은 필요한 references만 참조하며, 명시적인 `skills` 경로는 추가로 주입합니다. 레거시 run은 기존 Higgsfield 스킬 자동 검색 방식을 유지합니다.
 - MCP: Claude.ai에 연결된 Higgsfield의 기존 인증을 사용합니다. 별도 broker stdio 매핑은 필요하지 않습니다. 선택적으로 `mcp` 설정을 제공하면 기존 broker stdio 방식으로 동작합니다.
 - 소스: 프로젝트 `app/`, 미리보기: localhost. 배포·게시 명령은 실행하지 않습니다.
 
@@ -67,11 +67,11 @@ Herdr 0.9.3에는 `plugin update`가 없습니다. 원하는 Git 태그로 `plug
 
 ```sh
 herdr --session homepage plugin action invoke stop --plugin herdr-homepage-broker
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.1 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.9.2 --yes
 herdr --session homepage plugin action invoke start --plugin herdr-homepage-broker
 ```
 
-`v0.9.1`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
+`v0.9.2`을 설치할 릴리스 태그로 바꿉니다. 로컬 link에서 Git 설치로 바꿀 때만 기존 link를 `herdr --session homepage plugin unlink herdr-homepage-broker`로 해제합니다. 이 명령은 소스 디렉터리나 프로젝트 상태를 삭제하지 않습니다. 구버전에 stop 액션이 없다면 그 버전의 foreground 브로커를 Ctrl+C로 종료하거나, 확인된 owner PID·시작 시각을 대조해 중지합니다.
 
 이미 실행 중인 Claude PM에는 새 플러그인을 강제로 주입하거나 재시작하지 않습니다. 새 프로젝트 또는 피드백으로 생성한 새 run의 PM부터 0.9.0 워크플로를 사용합니다. 기존 run의 pane·진행 기록은 유지합니다. 0.8.0에서 시작해 아직 진행 중인 run은 재개하지 말고 업데이트 전에 마무리하거나, 업데이트 후 취소하고 새 run으로 다시 시작합니다. 0.8.0 지침이 가리키던 helper와 스킬 파일이 0.9.0 플러그인에는 없습니다.
 
@@ -94,7 +94,7 @@ herdr --session homepage plugin log list --plugin herdr-homepage-broker
 
 ## homepage-studio 진단 (0.9.0)
 
-설치 checkout에서 `node dist/src/cli.js doctor`를 실행하면 `studio.plugin`의 경로·버전·준비 여부와 `studio.tools`의 확인 결과를 볼 수 있습니다. 필수 번들 파일(`homepage-studio`·`frontend-design` 스킬, `look.py`)이 없으면 `studio_plugin_missing`으로 실행을 멈추므로 같은 릴리스를 다시 설치하세요.
+설치 checkout에서 `node dist/src/cli.js doctor`를 실행하면 `studio.plugin`의 경로·버전·준비 여부와 `studio.tools`의 확인 결과를 볼 수 있습니다. 필수 번들 파일(`homepage-studio`·`frontend-design`·`design-taste`·`high-end-visual-design` 스킬, `look.py`)이 없으면 `studio_plugin_missing`으로 실행을 멈추므로 같은 릴리스를 다시 설치하세요.
 
 검사 대상은 `look.py`가 쓰는 `python3`와 Python Playwright입니다. `cwebp`는 있으면 이미지 변환에 쓰고, 없으면 macOS `sips`로 대신하므로 참고 정보(`optional_missing`)로만 표시합니다. 누락은 경고로만 표시하고 자동 설치하거나 제작 시작을 막지 않습니다. Playwright가 없으면 PM은 스크린샷 확인을 생략했다고 보고하고 나머지 작업을 계속합니다.
 
