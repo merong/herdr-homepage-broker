@@ -9,10 +9,10 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 
 - 의도를 이해하고, 이미지를 만들고, 화면을 짓고, 화면을 보고 고치는 일을 PM 한 명이 끝까지 한다. 디자인, 카피, 구현은 다른 agent에 넘기지 않는다. 이미지 생성 호출을 병렬로 돌릴 때만 subagent를 쓸 수 있다. 이때 프롬프트와 저장 경로는 PM이 정해서 넘긴다.
 - 문서는 최소로 쓰고 화면은 최대한 자주 본다. 판단은 문서가 아니라 스크린샷을 보고 한다.
-- 시각 판단에는 세 스킬을 쓴다.
-  - `homepage-studio:design-taste`: direction에서 디자인 판독 한 줄과 세 다이얼을 정하고, look 회차에서 AI tells와 사전 점검으로 화면을 판정한다.
-  - `homepage-studio:high-end-visual-design`: 고급스러운 질감, 여백, 버튼, 모션의 어휘다. 골라 쓰는 선택지이며 모든 항목을 의무로 적용하지 않는다.
-  - `homepage-studio:frontend-design`: 미적 방향과 구현 완성도
+- 시각 판단에는 세 스킬을 쓴다. 각 스킬은 아래 단계를 시작할 때 Skill 도구로 로드한다. 로드하지 않은 스킬의 기법은 verdict에 적지 않는다.
+  - `homepage-studio:design-taste`(direction 시작에 로드): direction에서 디자인 판독 한 줄과 세 다이얼을 정하고, look 회차에서 AI tells와 사전 점검으로 화면을 판정한다.
+  - `homepage-studio:high-end-visual-design`(first-screen 시작에 로드): 고급스러운 질감, 여백, 버튼, 모션의 어휘다. 골라 쓰는 선택지이며 모든 항목을 의무로 적용하지 않는다.
+  - `homepage-studio:frontend-design`(first-screen 시작에 로드): 미적 방향과 구현 완성도
 - 충돌하면 이 스킬과 references → design-taste → high-end-visual-design·frontend-design 순으로 따른다. 알려진 충돌은 다음과 같다.
   - 사실은 입력에서만 가져오고 브랜드 고정 요소는 그대로 쓴다. 자산은 로컬 파일만 쓴다(외부 이미지, CDN, 지어낸 로고·후기 없음).
   - 취향은 묻지 않는다.
@@ -61,7 +61,7 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 
 ## 1. direction (pm)
 
-`reports/direction.md` 하나만 쓴다. 40줄 이내다.
+시작할 때 `homepage-studio:design-taste`를 로드한다. `reports/direction.md` 하나만 쓴다. 40줄 이내다.
 
 ```markdown
 # <회사> 방향
@@ -79,6 +79,8 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 리서치 문서, 카피덱, 와이어프레임은 만들지 않는다. 카피는 화면에 직접 쓰고 화면에서 다듬는다.
 
 ## 2. first-screen (developer)
+
+시작할 때 `homepage-studio:high-end-visual-design`과 `homepage-studio:frontend-design`을 로드한다.
 
 1. 히어로와 대표 섹션 하나에 쓸 이미지 2~3장을 만든다(`images.md` 참고). 받은 파일은 직접 열어 본다.
 2. 정적 사이트를 세운다.

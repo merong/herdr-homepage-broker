@@ -264,11 +264,21 @@ test("S01 homepage-studio plugin ships the lean skill, vendored design skills, t
   );
   assert.match(
     lean,
-    /high-end-visual-design`: [^\n]*선택지이며 모든 항목을 의무로 적용하지 않는다/,
+    /high-end-visual-design`\(first-screen 시작에 로드\): [^\n]*선택지이며 모든 항목을 의무로 적용하지 않는다/,
   );
   assert.match(
     lean,
     /한 회차는 design-taste 14절 사전 점검으로 보고[^\n]*별도 문서나 회차는 더하지 않는다/,
+  );
+  // Each design skill is loaded at a named stage, and unloaded skills are not cited.
+  assert.match(lean, /로드하지 않은 스킬의 기법은 verdict에 적지 않는다/);
+  assert.match(
+    lean,
+    /## 1\. direction \(pm\)\n\n시작할 때 `homepage-studio:design-taste`를 로드한다/,
+  );
+  assert.match(
+    lean,
+    /## 2\. first-screen \(developer\)\n\n시작할 때 `homepage-studio:high-end-visual-design`과 `homepage-studio:frontend-design`을 로드한다/,
   );
   const look = await fs.readFile(path.join(repoPlugin, lookScript), "utf8");
   assert.match(look, /^#!\/usr\/bin\/env python3\n/);
@@ -435,7 +445,7 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
     assert.match(pm, /Load skill homepage-studio:homepage-studio first/);
     assert.match(
       guide,
-      /for visual craft use homepage-studio:design-taste, homepage-studio:high-end-visual-design and homepage-studio:frontend-design, and on conflict follow the priority set in the homepage-studio skill/,
+      /for visual craft load homepage-studio:design-taste, homepage-studio:high-end-visual-design and homepage-studio:frontend-design at the stages the homepage-studio skill names, and on conflict follow the priority set in the homepage-studio skill/,
     );
     assert.match(
       guide,

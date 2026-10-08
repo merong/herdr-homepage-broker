@@ -87,6 +87,15 @@ CLI 사전 점검은 `node dist/src/cli.js project readiness --project ID`입니
 
 웹 서버는 loopback에서만 동작합니다. 상태 읽기와 초기화·submit·시작/재개 작업을 HTTP로 노출하며 변경 요청은 같은 출처와 CSRF 토큰을 확인합니다. 답변·취소·피드백은 기존 CLI를 사용합니다. 이 웹 서버를 원격 공개용 REST 큐로 사용하지 않습니다.
 
+## 시각 판단 스킬을 단계별로 로드 (0.9.3)
+
+- 0.9.2 제작 검증에서 PM이 `design-taste`만 로드하고 `high-end-visual-design`과 `frontend-design`은 로드하지 않은 것을 확인했습니다. 그런데도 확인 기록에는 high-end 기법을 골랐다고 적었습니다.
+- 이제 단계마다 로드할 스킬을 정해 둡니다. direction을 시작할 때 `design-taste`를, first-screen을 시작할 때 `high-end-visual-design`과 `frontend-design`을 Skill 도구로 로드합니다. PM 지침도 "homepage-studio 스킬이 정한 단계에서 로드한다"로 맞췄습니다.
+- 로드하지 않은 스킬의 기법은 확인 기록(verdict)에 적지 않습니다.
+- 스킬 내용, 우선순위, 단계와 회차 수는 그대로입니다. first-screen에서 읽는 스킬 본문이 늘어 그 단계 시간이 조금 늘 수 있습니다.
+
+**이미 시작한 PM**: PM 지침은 PM을 시작할 때 읽으므로, 업데이트 후 새로 만든 프로젝트·피드백 run부터 적용됩니다.
+
 ## 시각 판단 스킬 추가: taste-skill (0.9.2)
 
 - homepage-studio 플러그인에 [taste-skill](https://github.com/Leonxlnx/taste-skill)(MIT)의 스킬 두 개를 기본으로 넣었습니다. 기존 `frontend-design`은 그대로 둡니다.
