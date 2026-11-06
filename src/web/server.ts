@@ -14,6 +14,7 @@ import { VERSION } from "../version.js";
 import { readEvents } from "../storage/events.js";
 import { DEFAULT_STALL_MINUTES } from "../domain/stall.js";
 import { listAssets, listShots, resolveImage, runDir } from "./files.js";
+import { showcase } from "./showcase.js";
 
 type Snapshot = ReturnType<Broker["status"]>;
 
@@ -199,9 +200,20 @@ export class Dashboard {
   async start(port: number) {
     const assets = new Map<string, { body: Buffer; type: string }>();
     const js = "text/javascript; charset=utf-8",
-      css = "text/css; charset=utf-8";
+      css = "text/css; charset=utf-8",
+      html = "text/html; charset=utf-8",
+      webp = "image/webp";
     for (const [route, name, type] of [
-      ["/", "index.html", "text/html; charset=utf-8"],
+      // `/` is the landing page; the dashboard moved to `/dashboard` and the
+      // landing forwards old `/#/…` links there (legacy.js).
+      ["/", "landing.html", html],
+      ["/dashboard", "dashboard.html", html],
+      ["/legacy.js", "legacy.js", js],
+      ["/landing.css", "landing.css", css],
+      ["/landing/hero.webp", "landing/hero.webp", webp],
+      ["/landing/direction.webp", "landing/direction.webp", webp],
+      ["/landing/first-screen.webp", "landing/first-screen.webp", webp],
+      ["/landing/build-out.webp", "landing/build-out.webp", webp],
       ["/theme.js", "theme.js", js],
       ["/icons.js", "icons.js", js],
       ["/app.js", "app.js", js],
@@ -413,6 +425,16 @@ export class Dashboard {
         sample,
         repository: "merong/herdr-homepage-broker",
       });
+      return;
+    }
+    if (route === "/api/showcase") {
+      // Landing gallery: produced homepages and their look.py cover shots.
+      // Images load through the per-project shots route below.
+      try {
+        json(200, await showcase((await this.read()).projects, previewUrl));
+      } catch {
+        json(503, { error: "status_unavailable" });
+      }
       return;
     }
     if (route === "/api/mcp" || route === "/api/mcp?refresh=1") {

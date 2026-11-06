@@ -430,12 +430,21 @@
     a.rel = "noopener noreferrer";
     target.append(a);
   }
+  // The landing's "새 제작 요청" links here as /dashboard#/request.
+  function requestFromHash() {
+    if (location.hash !== "#/request") return;
+    history.replaceState(null, "", "#/");
+    if (boot?.can_submit && !$("request-dialog").open)
+      $("request-dialog").showModal();
+  }
   api("/api/bootstrap")
     .then((data) => {
       boot = data;
       window.homepageBoot = data;
       window.homepageRender?.();
       $("request-open").disabled = !data.can_submit;
+      requestFromHash();
+      window.addEventListener("hashchange", requestFromHash);
       directory();
       help();
       try {

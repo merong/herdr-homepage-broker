@@ -511,13 +511,17 @@ export class Broker {
       await appendEvents(p.directory, [
         { at: now(), run_id: r.run_id, kind: "stall", ...stall },
       ]).catch(() => {});
+      // `/` is the landing page; the project's detail lives in the dashboard.
+      const page = this.dashboard?.url
+        ? ` ${this.dashboard.url}/dashboard#/p/${encodeURIComponent(p.project_id)}`
+        : "";
       await this.herdr
         .cli([
           "notification",
           "show",
           `홈페이지 ${p.project_id} 진행 멈춤`,
           "--body",
-          `${stall.task_id} 태스크가 ${stall.minutes}분째 진행되지 않습니다. 대시보드에서 터미널을 확인하세요.`,
+          `${stall.task_id} 태스크가 ${stall.minutes}분째 진행되지 않습니다. 대시보드에서 터미널을 확인하세요.${page}`,
           "--sound",
           "request",
         ])

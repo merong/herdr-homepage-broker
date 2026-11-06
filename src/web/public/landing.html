@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Herdr homepage 세션에서 프로젝트마다 Claude PM 한 명이 방향, 첫 화면, 전체 페이지 순서로 홈페이지를 만드는 로컬 브로커입니다."
+    />
+    <title>Homepage Broker · 문서로 맡기고 화면으로 확인합니다</title>
+    <link rel="icon" href="data:," />
+    <script src="/legacy.js"></script>
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/bundle.css" />
+    <link rel="stylesheet" href="/landing.css" />
+    <script src="/ui/components.js" defer></script>
+  </head>
+  <body class="landing">
+    <a class="lp-skip" href="#main">본문으로 이동</a>
+    <!-- React (ui/components.js) replaces this fallback with the landing. -->
+    <div id="landing">
+      <div class="lp-fallback">
+        <p class="lp-brand">Homepage Broker</p>
+        <h1 class="lp-h1">문서 두 개로 맡기고, 화면으로 확인합니다.</h1>
+        <p class="lp-lead">
+          화면 구성 요소(ui/components.js)를 불러오지 못했습니다. npm run build
+          후 브로커를 다시 시작하세요. 제작 현황은 대시보드에서 볼 수 있습니다.
+        </p>
+        <a class="lp-btn lp-btn-primary" href="/dashboard">대시보드 열기</a>
+      </div>
+    </div>
+    <noscript
+      ><p class="lp-noscript">
+        랜딩 페이지를 표시하려면 JavaScript를 활성화하세요.
+        <a href="/dashboard">대시보드 열기</a>
+      </p></noscript
+    >
+  </body>
+</html>

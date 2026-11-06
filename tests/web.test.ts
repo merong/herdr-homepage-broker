@@ -5,12 +5,14 @@ import path from "node:path";
 import http from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import vm from "node:vm";
 import { fixture, FakeHerdr } from "./helpers.js";
 import { Broker } from "../src/broker/broker.js";
 import { brokerSocket, config } from "../src/config.js";
 import { request } from "../src/broker/client.js";
 import { current, makeTask } from "../src/domain/engine.js";
 import { Dashboard, previewUrl } from "../src/web/server.js";
+import { displayName } from "../src/web/showcase.js";
 import { parseAnsi } from "../src/web/ui/ansi.js";
 import { eventsFile, readEvents } from "../src/storage/events.js";
 
@@ -60,7 +62,10 @@ test("W01 HTTP assets, empty queue, IPC updates and sanitized status without wri
   const f = await setup();
   try {
     for (const [route, marker] of [
-      ["/", "홈페이지 제작 현황"],
+      ["/", 'id="landing"'],
+      ["/dashboard", "홈페이지 제작 현황"],
+      ["/landing.css", ".lp-hero"],
+      ["/legacy.js", "/dashboard"],
       ["/app.js", "textContent"],
       ["/app.css", ".live-card"],
       ["/tokens.css", "--accent"],
@@ -615,6 +620,11 @@ test("W12 stall: changed_at tracking, one Herdr notification, banner data and cl
     assert.equal(notices.length, 1);
     assert.equal(notices[0][1], "show");
     assert.ok(notices[0].includes("--sound"));
+    assert.ok(
+      notices[0][notices[0].indexOf("--body") + 1].endsWith(
+        `${f.url}/dashboard#/p/company`,
+      ),
+    );
     const status = await (await fetch(f.url + "/api/status")).json();
     assert.equal(status.projects[0].stall.task_id, "direction");
     assert.ok(status.projects[0].stall.minutes >= 11);
@@ -810,4 +820,262 @@ test("W16 ANSI parser maps SGR to terminal tokens and drops other escapes", () =
   assert.equal(lines.length, 2);
   assert.deepEqual(lines[1][0].classes, ["t-red"]);
   assert.deepEqual(parseAnsi(""), [[]]);
+});
+
+test("W17 landing at /, dashboard at /dashboard, landing images and legacy hash forwarding", async () => {
+  const f = await setup();
+  try {
+    const landing = await fetch(f.url + "/");
+    assert.equal(landing.status, 200);
+    assert.match(landing.headers.get("content-type")!, /^text\/html/);
+    const html = await landing.text();
+    assert.ok(html.includes('id="landing"'));
+    assert.ok(
+      html.includes('href="/dashboard"'),
+      "fallback links the dashboard",
+    );
+    // The redirect runs before the theme script and any paint.
+    assert.ok(html.indexOf("/legacy.js") < html.indexOf("/theme.js"));
+    assert.ok(html.includes("/ui/components.js"));
+    assert.equal(html.includes("/app.js"), false);
+    const dashboard = await (await fetch(f.url + "/dashboard")).text();
+    assert.ok(dashboard.includes("/app.js"));
+    assert.ok(dashboard.includes('class="toolbar-brand" href="/"'));
+    assert.ok(
+      (await (await fetch(f.url + "/ui/components.js")).text()).includes(
+        "lp-hero",
+      ),
+    );
+    let total = 0;
+    for (const name of ["hero", "direction", "first-screen", "build-out"]) {
+      const res = await fetch(f.url + `/landing/${name}.webp`);
+      assert.equal(res.status, 200, name);
+      assert.equal(res.headers.get("content-type"), "image/webp");
+      const body = Buffer.from(await res.arrayBuffer());
+      assert.equal(body.subarray(0, 4).toString(), "RIFF");
+      assert.equal(body.subarray(8, 12).toString(), "WEBP");
+      assert.ok(body.length <= 400 * 1024, `${name} ≤ 400KB`);
+      total += body.length;
+    }
+    assert.ok(total <= 1.5 * 1024 * 1024, "landing images ≤ 1.5MB");
+    for (const route of [
+      "/dashboard/",
+      "/dashboard?x=1",
+      "/index.html",
+      "/landing.html",
+      "/dashboard.html",
+      "/landing/",
+      "/landing/other.webp",
+      "/landing/../config.json",
+    ])
+      assert.equal((await httpRequest(f.url + route)).status, 404, route);
+
+    // legacy.js as served: old dashboard hashes move to /dashboard, the
+    // landing's own anchors stay.
+    const legacy = await (await fetch(f.url + "/legacy.js")).text();
+    const forward = (hash: string) => {
+      let target: string | null = null;
+      vm.runInNewContext(legacy, {
+        location: { hash, replace: (url: string) => (target = url) },
+      });
+      return target;
+    };
+    for (const [hash, target] of [
+      ["#/", "/dashboard#/"],
+      ["#/p/company", "/dashboard#/p/company"],
+      ["#/p/%ED%95%9C", "/dashboard#/p/%ED%95%9C"],
+      ["#/structure", "/dashboard#/structure"],
+      ["#/request", "/dashboard#/request"],
+      ["#company-2026", "/dashboard#company-2026"],
+      ["#showcase", null],
+      ["#flow", null],
+      ["#watch", null],
+      ["#main", null],
+      ["", null],
+      ["#%EC%82%AC%EB%A1%80", null],
+    ])
+      assert.equal(forward(hash!), target, hash!);
+  } finally {
+    await f.close();
+  }
+});
+
+test("W18 showcase lists produced projects with a cover shot and nothing else", async () => {
+  const f = await setup();
+  try {
+    const empty = await (await fetch(f.url + "/api/showcase")).json();
+    assert.deepEqual(empty.projects, []);
+    assert.equal(empty.summary.projects, 0);
+    assert.equal(empty.summary.max_parallel, 2);
+
+    const png = Buffer.from("89504e470d0a1a0a0000", "hex");
+    const put = async (dir: string, file: string, at: string) => {
+      const target = path.join(dir, file);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, png);
+      await fs.utimes(target, new Date(at), new Date(at));
+    };
+    for (const id of ["company", "second", "third", "dropped", "blank"])
+      await request(brokerSocket(f.config), f.submit(id));
+    const projects = f.b.store.state.projects;
+    const runOf = (id: string) => current(projects[id]).run_id;
+    const runs = (id: string, run = runOf(id)) =>
+      path.join(projects[id].directory, ".herdr/runs", run);
+
+    // Delivered: final + an earlier round, a ready preview, a PRD heading.
+    const company = projects.company;
+    await fs.writeFile(
+      path.join(company.directory, "prd.md"),
+      "# 한결 식탁공방 — 공방 소개 홈페이지\n\nSECRET_PRD_BODY 연락처 010-0000-0000\n",
+    );
+    await put(
+      runs("company"),
+      "reports/look/1/desktop.png",
+      "2026-10-01T01:00:00Z",
+    );
+    for (const file of ["desktop.png", "mobile.png", "desktop-full.png"])
+      await put(
+        runs("company"),
+        `reports/look/final/${file}`,
+        "2026-10-02T01:00:00Z",
+      );
+    await fs.writeFile(
+      path.join(runs("company"), "reports/look/final/verdict.md"),
+      "PRIVATE_VERDICT",
+    );
+    const cr = current(company);
+    cr.agents[0].token = "PRIVATE_AGENT_CAPABILITY";
+    cr.preview = {
+      status: "ready",
+      run_id: cr.run_id,
+      url: "http://127.0.0.1:4300",
+      argv: ["PRIVATE_PREVIEW_ARGS"],
+    };
+    await f.b.save(company);
+    // In progress: only round 2 so far, no PRD file (name falls back to id).
+    await put(
+      runs("second"),
+      "reports/look/2/desktop.png",
+      "2026-10-03T01:00:00Z",
+    );
+    // Final in an earlier run, nothing yet in the current one.
+    await put(
+      runs("third", "run-old"),
+      "reports/look/final/desktop.png",
+      "2026-10-01T05:00:00Z",
+    );
+    const tr = current(projects.third);
+    tr.preview = {
+      status: "ready",
+      run_id: tr.run_id,
+      url: "http://127.0.0.1:4301",
+    };
+    await f.b.save(projects.third);
+    // Cancelled without a final round: not a produced homepage.
+    await put(
+      runs("dropped"),
+      "reports/look/1/desktop.png",
+      "2026-10-04T01:00:00Z",
+    );
+    current(projects.dropped).status = "cancelled";
+    await f.b.save(projects.dropped);
+
+    const before = JSON.stringify(f.b.store.state);
+    const res = await fetch(f.url + "/api/showcase");
+    assert.equal(res.status, 200);
+    const body = await res.text(),
+      data = JSON.parse(body);
+    assert.deepEqual(
+      data.projects.map((p: any) => [p.project_id, p.delivered, p.round]),
+      [
+        ["company", true, "final"],
+        ["third", true, "final"],
+        ["second", false, "2"],
+      ],
+    );
+    const [c, t, s] = data.projects;
+    assert.equal(c.name, "한결 식탁공방");
+    assert.equal(s.name, "second");
+    assert.equal(c.rounds, 2);
+    assert.equal(c.stage, "final");
+    assert.deepEqual(c.shots.desktop, {
+      path: `${cr.run_id}/final/desktop.png`,
+      mtime: "2026-10-02T01:00:00.000Z",
+    });
+    assert.equal(c.shots.mobile_full, null);
+    assert.equal(c.preview_url, "http://127.0.0.1:4300/");
+    assert.equal(t.run_id, "run-old");
+    assert.equal(t.preview_url, null, "preview belongs to the current run");
+    assert.equal(s.stage, "first-screen");
+    assert.deepEqual(data.summary, {
+      projects: 5,
+      showcased: 3,
+      delivered: 2,
+      active: 0,
+      queued: 4,
+      review: 0,
+      max_parallel: 2,
+    });
+    assert.deepEqual(Object.keys(c).sort(), [
+      "at",
+      "created_at",
+      "delivered",
+      "name",
+      "preview_url",
+      "project_id",
+      "round",
+      "rounds",
+      "run_id",
+      "shots",
+      "stage",
+      "status",
+    ]);
+    for (const secret of [
+      f.root,
+      "SECRET_PRD_BODY",
+      "010-0000",
+      "PRIVATE_",
+      "verdict",
+      "directory",
+      "token",
+    ])
+      assert.equal(body.includes(secret), false, secret);
+    // Covers load through the existing whitelisted image route.
+    for (const url of [
+      `/api/projects/company/shots/${c.shots.desktop.path}?v=1`,
+      `/api/projects/third/shots/${t.shots.desktop.path}?v=1`,
+    ]) {
+      const image = await fetch(f.url + url);
+      assert.equal(image.status, 200, url);
+      assert.equal(image.headers.get("content-type"), "image/png");
+    }
+    assert.equal((await httpRequest(f.url + "/api/showcase?x=1")).status, 404);
+    assert.equal(
+      (await httpRequest(f.url + "/api/showcase", {}, "POST")).status,
+      405,
+    );
+    assert.equal(JSON.stringify(f.b.store.state), before);
+    assert.equal(f.h.calls.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("W19 showcase display name comes from the PRD heading only", () => {
+  for (const [prd, name] of [
+    ["# 반경 정비소 홈페이지\n## Overview", "반경 정비소"],
+    ["# 한결 식탁공방 — 공방 소개 홈페이지", "한결 식탁공방"],
+    ["# Morrow Works 기업용 랜딩 페이지 PRD", "Morrow Works"],
+    [
+      "# Example Studio 홈페이지 · Higgsfield 이미지 생성 테스트 PRD",
+      "Example Studio",
+    ],
+    ["작성일 2026-10-07\n## 개요\n# **PAW & DAY** — 웰니스", "PAW & DAY"],
+    ["# A\u0007B 홈페이지", "AB"],
+    ["# 홈페이지", "fallback"],
+    ["본문만 있고 제목이 없습니다", "fallback"],
+    ["#해시태그처럼 붙은 줄", "fallback"],
+    [`# ${"가".repeat(80)}`, "가".repeat(48)],
+  ])
+    assert.equal(displayName(prd, "fallback"), name, prd);
 });

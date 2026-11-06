@@ -5,6 +5,7 @@ import { StageBar } from "./StageBar";
 import { Timeline } from "./Timeline";
 import { ListThumb, ShotCover, ShotGallery, ShotStrip } from "./Shots";
 import { Structure } from "./Structure";
+import { Landing } from "./Landing";
 
 const components: Record<string, ComponentType<any>> = {
   TerminalMirror,
@@ -15,6 +16,7 @@ const components: Record<string, ComponentType<any>> = {
   ShotCover,
   ListThumb,
   Structure,
+  Landing,
 };
 
 // The plain-JS shell rebuilds its DOM on every snapshot. Each React part lives
@@ -61,3 +63,11 @@ declare global {
   }
 }
 window.BrokerUI = { slot, begin, end };
+
+// The landing page (`/`) has no plain-JS shell: it mounts itself here. The
+// static fallback inside #landing stays only when this bundle fails to load.
+const landing = document.getElementById("landing");
+if (landing) {
+  landing.replaceChildren();
+  createRoot(landing).render(createElement(Landing));
+}

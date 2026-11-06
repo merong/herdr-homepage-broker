@@ -26,8 +26,12 @@ a.list-row:hover {
   text-decoration: none;
 }
 a.segment,
-a.list-row {
+a.list-row,
+a.toolbar-brand {
   color: var(--text-1);
+}
+a.toolbar-brand:hover {
+  text-decoration: none;
 }
 h1,
 h2,

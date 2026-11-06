@@ -14,6 +14,12 @@ export default defineConfig({
     target: "es2022",
     sourcemap: false,
     reportCompressedSize: false,
+    rollupOptions: {
+      // lucide-react marks its modules "use client"; meaningless in an IIFE.
+      onwarn(warning, warn) {
+        if (warning.code !== "MODULE_LEVEL_DIRECTIVE") warn(warning);
+      },
+    },
     // A classic deferred script: minified, and it runs before app.js in
     // document order (lib-mode ES output keeps whitespace unminified).
     lib: {
