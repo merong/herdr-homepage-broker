@@ -1,5 +1,6 @@
 import http from "node:http";
 import fs from "node:fs/promises";
+import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { Config, fail } from "../contracts/types.js";
 import { projectDirectory, projectFiles, sample } from "../projects/manage.js";
@@ -10,6 +11,9 @@ import type { AddressInfo } from "node:net";
 import type { Broker } from "../broker/broker.js";
 import { McpHealth } from "../media/health.js";
 import { VERSION } from "../version.js";
+import { readEvents } from "../storage/events.js";
+import { DEFAULT_STALL_MINUTES } from "../domain/stall.js";
+import { listAssets, listShots, resolveImage, runDir } from "./files.js";
 
 type Snapshot = ReturnType<Broker["status"]>;
 
@@ -39,6 +43,8 @@ export function webSnapshot(s: Snapshot) {
       workspace_id: p.herdr.workspace_id,
       orchestration: p.orchestration ?? null,
       input_required: p.input_required,
+      created_at: p.created_at,
+      stall: p.stall,
       preview: {
         status: p.preview.status,
         url: previewUrl(p.preview.status, p.preview.url),
@@ -58,6 +64,7 @@ export function webSnapshot(s: Snapshot) {
           status: a.runtime.status ?? "unknown",
           fresh: a.runtime.fresh === true,
           observed_at: a.runtime.observed_at ?? null,
+          changed_at: a.runtime.changed_at ?? null,
           interactive_ready: a.runtime.interactive_ready === true,
         },
       })),
@@ -117,12 +124,37 @@ export class Dashboard {
   private streamTimer?: NodeJS.Timeout;
   private broadcasting = false;
   private mcp: McpHealth;
+  private herdr?: Herdr;
+  private panes = new Map<string, { at: number; read: Promise<string> }>();
   constructor(
     private read: () => Promise<Snapshot>,
     private config?: Config,
     mcp?: McpHealth,
+    herdr?: Herdr,
   ) {
     this.mcp = mcp ?? new McpHealth(config?.mcp);
+    this.herdr = herdr ?? (config ? new Herdr(config) : undefined);
+  }
+
+  // Several viewers (list thumbnail + detail mirror, more tabs) share one
+  // `pane read` per pane per ~second instead of each spawning the Herdr CLI.
+  private paneText(pane: string) {
+    const hit = this.panes.get(pane);
+    if (hit && Date.now() - hit.at < 900) return hit.read;
+    const read = this.herdr!.text([
+      "pane",
+      "read",
+      pane,
+      "--source",
+      "visible",
+      "--format",
+      "ansi",
+    ]);
+    this.panes.set(pane, { at: Date.now(), read });
+    read.catch(() => this.panes.delete(pane));
+    for (const [key, value] of this.panes)
+      if (Date.now() - value.at > 60000) this.panes.delete(key);
+    return read;
   }
 
   private async snapshot() {
@@ -166,17 +198,29 @@ export class Dashboard {
 
   async start(port: number) {
     const assets = new Map<string, { body: Buffer; type: string }>();
+    const js = "text/javascript; charset=utf-8",
+      css = "text/css; charset=utf-8";
     for (const [route, name, type] of [
       ["/", "index.html", "text/html; charset=utf-8"],
-      ["/app.js", "app.js", "text/javascript; charset=utf-8"],
-      ["/actions.js", "actions.js", "text/javascript; charset=utf-8"],
-      ["/live.js", "live.js", "text/javascript; charset=utf-8"],
-      ["/style.css", "style.css", "text/css; charset=utf-8"],
+      ["/theme.js", "theme.js", js],
+      ["/icons.js", "icons.js", js],
+      ["/app.js", "app.js", js],
+      ["/actions.js", "actions.js", js],
+      ["/live.js", "live.js", js],
+      ["/tokens.css", "tokens.css", css],
+      ["/bundle.css", "bundle.css", css],
+      ["/app.css", "app.css", css],
+      ["/ui/components.js", "ui/components.js", js],
     ])
-      assets.set(route, {
-        body: await fs.readFile(new URL(`./public/${name}`, import.meta.url)),
-        type,
-      });
+      try {
+        assets.set(route, {
+          body: await fs.readFile(new URL(`./public/${name}`, import.meta.url)),
+          type,
+        });
+      } catch (e: any) {
+        // The Vite bundle is optional: the shell renders without React parts.
+        if (e.code !== "ENOENT" || route !== "/ui/components.js") throw e;
+      }
     this.server = http.createServer((req, res) => {
       void this.handle(req, res, assets).catch(() => {
         if (!res.headersSent)
@@ -233,6 +277,7 @@ export class Dashboard {
         "/api/projects/init",
         "/api/projects/submit",
         "/api/projects/execute",
+        "/api/projects/focus",
       ].includes(route ?? "")
     ) {
       if (
@@ -255,6 +300,29 @@ export class Dashboard {
         if (!input || typeof input.project_id !== "string")
           fail("invalid_project", "project_id is required");
         projectDirectory(this.config, input.project_id);
+        if (route === "/api/projects/focus") {
+          if (Object.keys(input).some((key) => key !== "project_id"))
+            fail("invalid_request", "focus accepts only project_id");
+          const p = (await this.read()).projects.find(
+            (p) => p.project_id === input.project_id,
+          );
+          if (!p) fail("unknown_project", "프로젝트를 찾을 수 없습니다.");
+          const workspace = p.herdr.workspace_id;
+          if (!workspace)
+            fail("no_workspace", "아직 Herdr workspace가 없습니다.");
+          // Display only: switches the Herdr client view, never business state.
+          try {
+            await this.herdr!.cli(["workspace", "focus", workspace], 5000);
+          } catch (e: any) {
+            json(502, {
+              error: e.code ?? "focus_failed",
+              message: "Herdr에서 workspace를 열지 못했습니다.",
+            });
+            return;
+          }
+          json(200, { ok: true, workspace_id: workspace, session: "homepage" });
+          return;
+        }
         if (route === "/api/projects/execute") {
           if (
             Object.keys(input).some(
@@ -340,6 +408,8 @@ export class Dashboard {
         config_file: process.env.HOMEPAGE_CONFIG || defaultConfigFile(),
         can_submit: !!this.config,
         csrf: this.config ? this.csrf : null,
+        stall_after_minutes:
+          this.config?.stallAfterMinutes ?? DEFAULT_STALL_MINUTES,
         sample,
         repository: "merong/herdr-homepage-broker",
       });
@@ -451,6 +521,7 @@ export class Dashboard {
       }
       return;
     }
+    if (await this.projectRoute(route ?? "", req, res, json)) return;
     const match = route?.match(/^\/api\/projects\/([a-zA-Z0-9_-]+)\/state$/);
     if (match) {
       try {
@@ -482,6 +553,133 @@ export class Dashboard {
     } catch {
       json(503, { error: "status_unavailable" });
     }
+  }
+
+  // Per-project read routes: terminal mirror, timeline, screenshots, images.
+  private async projectRoute(
+    route: string,
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    json: (code: number, body: unknown) => void,
+  ) {
+    const m = route.match(
+      /^\/api\/projects\/([a-zA-Z0-9_-]+)\/(terminal|events|shots|assets)(\/[^?]*)?(?:\?(.*))?$/,
+    );
+    if (!m) return false;
+    const [, id, kind, rest = "", query = ""] = m;
+    const params = new URLSearchParams(query);
+    const p = (await this.read()).projects.find((p) => p.project_id === id);
+    if (!p) {
+      json(404, { error: "unknown_project" });
+      return true;
+    }
+    const r = { run_id: p.run_id, directory: p.directory };
+    if (kind === "terminal" && !rest) {
+      if (!this.herdr || [...params.keys()].some((k) => k !== "agent")) {
+        json(404, { error: "not_found" });
+        return true;
+      }
+      const agent =
+        p.agents.find((a) => a.agent_id === params.get("agent")) ??
+        p.agents.find((a) => a.role === "pm") ??
+        p.agents[0];
+      const pane = agent?.herdr.pane_id;
+      const base = {
+        project_id: id,
+        run_id: r.run_id,
+        agent_id: agent?.agent_id ?? null,
+        pane_id: pane ?? null,
+        panes: p.agents
+          .filter((a) => a.herdr.pane_id)
+          .map((a) => ({ agent_id: a.agent_id, role: a.role })),
+      };
+      if (!pane || agent.runtime.status === "stopped") {
+        json(200, { ...base, available: false, reason: "no_pane" });
+        return true;
+      }
+      try {
+        const text = await this.paneText(pane);
+        json(200, {
+          ...base,
+          available: true,
+          text: text.slice(-256 * 1024),
+          read_at: new Date().toISOString(),
+        });
+      } catch (e: any) {
+        json(200, {
+          ...base,
+          available: false,
+          reason: e.code ?? "read_failed",
+        });
+      }
+      return true;
+    }
+    if (kind === "events" && !rest) {
+      const before = params.get("before"),
+        limit = params.get("limit");
+      if (
+        [...params.keys()].some((k) => !["before", "limit"].includes(k)) ||
+        (before !== null && !/^\d{1,9}$/.test(before)) ||
+        (limit !== null && !/^\d{1,3}$/.test(limit))
+      ) {
+        json(400, { error: "invalid_query" });
+        return true;
+      }
+      json(200, {
+        project_id: id,
+        run_id: r.run_id,
+        ...(await readEvents(r.directory, {
+          run_id: r.run_id,
+          before: before === null ? undefined : Number(before),
+          limit: Math.min(Math.max(Number(limit ?? 200), 1), 500),
+        })),
+      });
+      return true;
+    }
+    if (kind === "shots" && !rest && !query) {
+      json(200, {
+        project_id: id,
+        run_id: r.run_id,
+        rounds: await listShots(r.directory, r.run_id),
+        assets: await listAssets(r.directory, r.run_id),
+      });
+      return true;
+    }
+    // Images: /shots/<run>/<round>/<file> and /assets/<run>/<file>. A `v`
+    // cache-buster is the only accepted query.
+    const segments = rest.split("/").slice(1);
+    if (
+      rest &&
+      [...params.keys()].every((k) => k === "v") &&
+      segments.length === (kind === "shots" ? 3 : 2)
+    ) {
+      const [run, ...file] = segments;
+      const image = /^[a-zA-Z0-9_-]{1,128}$/.test(run)
+        ? await resolveImage(
+            path.join(
+              runDir(r.directory, run),
+              kind === "shots" ? "reports/look" : "assets",
+            ),
+            file,
+          )
+        : null;
+      if (image) {
+        res.writeHead(200, {
+          "Content-Type": image.type,
+          "Content-Length": image.size,
+          // URLs carry ?v=<mtime>, so a cached copy is never stale.
+          "Cache-Control": params.has("v")
+            ? "private, max-age=86400, immutable"
+            : "no-store",
+        });
+        res.end(
+          req.method === "HEAD" ? undefined : await fs.readFile(image.file),
+        );
+        return true;
+      }
+    }
+    json(404, { error: "not_found" });
+    return true;
   }
 
   async close() {

@@ -35,6 +35,17 @@
     missing: "미등록",
     checking: "확인 중",
   };
+  // One persistent badge node; the overview header re-inserts it each render.
+  const mcpBadge = el("button", "badge");
+  mcpBadge.type = "button";
+  mcpBadge.append("MCP 확인 중");
+  mcpBadge.onclick = () => $("mcp-dialog").showModal();
+  window.homepageMcpBadge = () => mcpBadge;
+  function setBadge(tone, iconName, text) {
+    if (tone) mcpBadge.dataset.tone = tone;
+    else delete mcpBadge.dataset.tone;
+    mcpBadge.replaceChildren(icon(iconName, "icon icon-xs"), text);
+  }
   async function checkMcp(force = false) {
     if (mcpBusy) return;
     mcpBusy = true;
@@ -48,55 +59,54 @@
       if (!res.ok) throw new Error("unavailable");
       const data = await res.json();
       const checking = data.checking;
-      $("mcp-summary").textContent = checking
-        ? "접속 검사 중"
-        : data.higgsfield.available
-          ? "Higgsfield 사용 가능"
-          : "Higgsfield 확인 필요";
-      $("mcp-summary").className =
-        `badge ${checking ? "starting" : data.higgsfield.available ? "completed" : "waiting_input"}`;
-      $("mcp-primary").className = `help${checking ? " skeleton" : ""}`;
+      if (checking) setBadge(null, "refresh", "Higgsfield MCP 확인 중");
+      else if (data.higgsfield.available)
+        setBadge("ok", "check", "Higgsfield MCP 연결됨");
+      else
+        setBadge(
+          "warn",
+          "alert",
+          `Higgsfield MCP ${labels[data.higgsfield.status] ?? "확인 필요"}`,
+        );
       $("mcp-primary").textContent =
         `Higgsfield · ${data.stale && data.checked_at ? "이전 검사: " : ""}${labels[data.higgsfield.status] ?? "확인 불가"}${checking ? " · 서버 목록과 연결을 확인하고 있습니다" : ""}`;
-      $("mcp-count").textContent =
-        `MCP 서버 목록 · ${data.servers.length}개${data.stale && data.checked_at ? " (이전 검사)" : ""}`;
       const rows = [...data.servers]
         .sort((a, b) => Number(b.higgsfield) - Number(a.higgsfield))
         .map((server) => {
-          const row = el(
-            "div",
-            `mcp-server${server.higgsfield ? " required-server" : ""}`,
-          );
-          row.append(
-            el("strong", "", server.name),
+          const row = el("div", "group-row");
+          const main = el("div", "v");
+          main.append(
+            el("div", "ui", server.name),
             el(
-              "span",
-              "",
+              "div",
+              "meta muted",
               server.higgsfield
                 ? "홈페이지 이미지 생성"
                 : "조회만 · 홈페이지 작업에서 사용 안 함",
             ),
-            el(
-              "span",
-              `badge ${server.status === "connected" ? "completed" : "waiting_input"}`,
-              labels[server.status] ?? "확인 불가",
-            ),
           );
+          const state = el(
+            "span",
+            "badge",
+            labels[server.status] ?? "확인 불가",
+          );
+          state.dataset.tone = server.status === "connected" ? "ok" : "warn";
+          row.append(main, state);
           return row;
         });
       $("mcp-servers").replaceChildren(...rows);
-      if (!rows.length)
-        $("mcp-servers").append(
-          el(
-            "p",
-            "help",
-            checking
-              ? "서버 목록 로딩 중…"
-              : data.error
-                ? "서버 목록을 확인하지 못했습니다."
-                : "등록된 MCP 서버가 없습니다.",
-          ),
+      if (!rows.length) {
+        const row = el(
+          "div",
+          "group-row muted",
+          checking
+            ? "서버 목록을 불러오고 있습니다."
+            : data.error
+              ? "서버 목록을 확인하지 못했습니다."
+              : "등록된 MCP 서버가 없습니다.",
         );
+        $("mcp-servers").append(row);
+      }
       const remedy =
         data.higgsfield.available || checking
           ? ""
@@ -108,11 +118,9 @@
       button.disabled = checking;
       button.textContent = checking ? "MCP 확인 중…" : "MCP 다시 확인";
     } catch {
-      $("mcp-summary").textContent = "상태 확인 불가";
-      $("mcp-summary").className = "badge waiting_input";
-      $("mcp-primary").className = "help";
+      setBadge("warn", "alert", "MCP 상태 확인 불가");
       $("mcp-primary").textContent =
-        "브로커 응답 없음 · 이전 연결 상태는 현재 사용 가능 여부를 보장하지 않습니다.";
+        "브로커 응답이 없습니다. 이전 연결 상태가 지금도 유효하다고 보장하지 않습니다.";
       $("mcp-note").textContent = "연결이 복구되면 자동으로 다시 확인합니다.";
       button.disabled = false;
       button.textContent = "MCP 다시 확인";

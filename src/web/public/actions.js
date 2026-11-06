@@ -128,7 +128,7 @@
         );
         draft.submitted = true;
         save();
-        document.getElementById("refresh").click();
+        window.homepageRefresh?.();
       } else
         message(
           `초기화 완료 · 아직 큐에 전송하지 않았습니다.\n경로: ${draft.receipt.directory}\n문서: prd.md, design.md\n요청: ${draft.receipt.request_file}`,
@@ -205,12 +205,12 @@
         `${info.project_id} · ${info.model} / ${info.effort} · 슬롯 ${info.slots_used}/${info.max_slots}`;
       $("execution-checks").replaceChildren();
       for (const c of info.checks) {
-        const row = node("div", "", `execution-check${c.ok ? "" : " blocked"}`);
-        row.append(
-          node("span", c.ok ? "확인됨" : "조치 필요", "check-state"),
-          node("strong", c.label),
-          node("p", c.detail, "help"),
-        );
+        const row = node("div", "", "group-row");
+        const main = node("div", "", "check-main");
+        main.append(node("strong", c.label), node("span", c.detail, "help"));
+        const state = node("span", c.ok ? "확인됨" : "조치 필요", "badge");
+        state.dataset.tone = c.ok ? "ok" : "warn";
+        row.append(main, state);
         $("execution-checks").append(row);
       }
       $("execution-note").textContent =
@@ -275,7 +275,7 @@
         `${result.action === "resume" ? "재개" : "시작"} 요청 접수 완료 · ${result.project_id}\n현재 run: ${result.run_id}\n실행은 큐 순서와 슬롯에 따라 진행됩니다. 실제 실행 여부는 프로젝트 상태에서 확인하세요.`,
       );
       executionInfo = null;
-      document.getElementById("refresh").click();
+      window.homepageRefresh?.();
     } catch (e) {
       if (
         e.code &&
@@ -306,8 +306,28 @@
   }
   $("execution-refresh").onclick = checkExecution;
   $("execution-send").onclick = sendExecution;
+  let toastTimer;
+  function toast(text, tone) {
+    const t = $("toast");
+    t.textContent = text;
+    if (tone) t.dataset.tone = tone;
+    else delete t.dataset.tone;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (t.hidden = true), 4000);
+  }
+  async function focusProject(id) {
+    if (!boot?.csrf) return;
+    try {
+      const r = await api("/api/projects/focus", { project_id: id });
+      toast(`Herdr에서 ${id} workspace(${r.workspace_id})를 열었습니다.`);
+    } catch (e) {
+      toast(`Herdr에서 열지 못했습니다: ${e.message}`, "danger");
+    }
+  }
   window.homepage = {
     executeProject: openExecution,
+    focusProject,
     inspectProject: (id) =>
       inspect(
         `${id} · JSON 상태`,
@@ -335,12 +355,11 @@
     const target = $("help-content");
     target.replaceChildren();
     const section = (title, body, command) => {
-      const d = document.createElement("details");
-      d.open = true;
-      d.append(node("summary", title), node("p", body, "help"));
+      const d = node("section", "", "help-section");
+      d.append(node("h3", title, "heading"), node("p", body, "help"));
       if (command) {
         d.append(node("pre", command, "json-output"));
-        const b = node("button", "명령 복사", "button small");
+        const b = node("button", "명령 복사", "btn btn-sm");
         b.onclick = async () => {
           try {
             await navigator.clipboard.writeText(command);
@@ -374,6 +393,10 @@
       "새 실행은 프로젝트마다 Herdr PM pane 하나만 생성합니다. Claude를 최소 옵션으로 실행한 뒤 Herdr agent prompt로 지침 파일과 작업 파일을 읽도록 전달합니다. PM이 같은 세션에서 디자인, 카피, 이미지 생성, 구현을 직접 하며 스크린샷을 보면서 고칩니다. 작업은 방향 정하기 → 첫 화면 → 전체 완성의 3개입니다. 신규 PM에 homepage-studio를 명시적으로 로드하며, 화면 확인은 look.py 스크린샷으로 첫 화면 최대 2회, 전체 완성 최대 3회와 최종 1회입니다. 이미지 생성을 병렬로 돌릴 때만 Claude 내부 에이전트를 쓰며, 작업별 상태 보고는 PM이 담당합니다. 기존 3개 pane 실행은 보존하고 새 프로젝트·피드백 실행부터 적용합니다.",
     );
     section(
+      "대시보드 화면",
+      `목록 열은 상태별(진행 중·큐 대기·일시정지·검토 대기·종료)로 묶습니다. 진행 중 카드에는 direction → first-screen → build-out 3단계 막대, PM 터미널 미러(2초 갱신), 최근 look.py 스크린샷이 보입니다. 상세 화면은 터미널을 1초마다 읽고, 회차별 스크린샷과 생성 이미지, events.jsonl 활동 기록을 보여줍니다. 태스크가 진행 중인데 PM이 ${boot.stall_after_minutes}분 넘게 working 상태가 아니면 응답 없음 경고를 띄우고 Herdr 알림을 한 번 보냅니다(stallAfterMinutes로 1~120분 조정). Herdr에서 열기는 해당 workspace로 Herdr 화면만 전환하며 작업 상태는 바꾸지 않습니다. 구조 탭은 시스템 구성, 제작 흐름, 11개 실행 상태를 그림으로 보여줍니다.`,
+    );
+    section(
       "3. 상태와 사용자 입력",
       "진행 상태는 broker-checkpoint.json을 기반으로 실시간 수신합니다. 연결 지연 시 2초 간격 조회로 전환합니다. 현재 진행에는 Herdr 실행 상태와 담당 작업, 최근 작업 보고가 표시되며 실제 실행 중인 태스크에만 로딩 효과가 적용됩니다. 프로젝트의 JSON 상태 확인은 meta/task/agents 파일의 revision·run 일치를 검사합니다. queued=접수 대기, running=제작 중, waiting_input=입력 필요, paused=명시적 재개 필요, review_pending=사용자 검토 대기입니다. 에이전트 유휴는 제작 완료와 다릅니다. 질문 답변은 answer --file, 문서 갱신은 apply-inputs로 전달합니다.",
     );
@@ -401,7 +424,7 @@
       "플러그인 업데이트와 Herdr 프로그램 업데이트는 별도입니다. Herdr 자체 업데이트가 필요할 때만 herdr update를 사용하세요. stop은 브로커 종료 명령입니다. ENOENT / broker.sock이면 start 액션으로 다시 시작하세요. 보드의 r은 프로젝트 재개입니다. 포트 충돌은 web.port를 바꾸고 브로커를 재시작합니다. JSON 불일치는 잠시 후 재조회합니다. 기존 프로젝트 파일·상태 JSON을 직접 삭제하여 초기화하지 마세요.",
       "herdr --version\nherdr --session homepage plugin list --json\nherdr --session homepage plugin log list --plugin herdr-homepage-broker",
     );
-    const a = node("a", "GitHub 소스와 설치 문서 ↗", "button");
+    const a = node("a", "GitHub 소스와 설치 문서", "btn");
     a.href = `https://github.com/${boot.repository}`;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
@@ -410,6 +433,8 @@
   api("/api/bootstrap")
     .then((data) => {
       boot = data;
+      window.homepageBoot = data;
+      window.homepageRender?.();
       $("request-open").disabled = !data.can_submit;
       directory();
       help();

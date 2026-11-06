@@ -76,7 +76,7 @@ export function socketRequest(
 }
 export class Herdr {
   constructor(public config: Config) {}
-  async cli(args: string[], timeout = 40000) {
+  private env() {
     const env = {
       ...process.env,
       HERDR_SESSION: "homepage",
@@ -98,11 +98,33 @@ export class Herdr {
       "HERDR_PLUGIN_CONTEXT_JSON",
     ])
       delete env[k as keyof typeof env];
+    return env;
+  }
+  // `pane read` prints terminal text (ANSI when asked), not a JSON envelope.
+  async text(args: string[], timeout = 5000): Promise<string> {
     try {
       const { stdout } = await exec(
         this.config.herdrBin,
         ["--session", "homepage", ...args],
-        { env, timeout, maxBuffer: 4 * 1024 * 1024 },
+        { env: this.env(), timeout, maxBuffer: 2 * 1024 * 1024 },
+      );
+      return stdout;
+    } catch (e: any) {
+      try {
+        const error = JSON.parse(e.stderr || e.stdout).error;
+        if (error?.code) throw new Fault(error.code, error.message ?? "");
+      } catch (parsed) {
+        if (parsed instanceof Fault) throw parsed;
+      }
+      throw new Fault("read_failed", "Herdr CLI did not return pane text");
+    }
+  }
+  async cli(args: string[], timeout = 40000) {
+    try {
+      const { stdout } = await exec(
+        this.config.herdrBin,
+        ["--session", "homepage", ...args],
+        { env: this.env(), timeout, maxBuffer: 4 * 1024 * 1024 },
       );
       const data = JSON.parse(stdout);
       if (data.error)

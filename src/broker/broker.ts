@@ -49,6 +49,8 @@ import { brokerSocket } from "../config.js";
 import { Dashboard } from "../web/server.js";
 import { executionReadiness } from "./execution.js";
 import { prepareRuntime } from "../projects/runtime.js";
+import { appendEvents } from "../storage/events.js";
+import { DEFAULT_STALL_MINUTES, Stall, stallOf } from "../domain/stall.js";
 export class Broker {
   store: Store;
   herdr: Herdr;
@@ -63,6 +65,8 @@ export class Broker {
   dashboard?: Dashboard;
   webError: string | null = null;
   clients = new Set<net.Socket>();
+  // run_id → stall already announced; in memory because restarts pause runs.
+  stalls = new Map<string, Stall>();
   constructor(
     public config: Config,
     herdr?: Herdr,
@@ -168,6 +172,8 @@ export class Broker {
           async () =>
             structuredClone(this.status(undefined, this.store.published)),
           this.config,
+          undefined,
+          this.herdr,
         );
         try {
           await this.dashboard.start(this.config.web.port);
@@ -471,6 +477,7 @@ export class Broker {
           directory: p.directory,
           revision: p.revision,
           run_id: r.run_id,
+          created_at: r.created_at,
           status: r.status,
           slot: r.slot,
           resume_required: r.resume_required,
@@ -484,9 +491,50 @@ export class Broker {
           tasks: r.tasks,
           agents: r.agents.map(({ token, ...a }) => a),
           operations: r.operations.map(({ request, ...o }) => o),
+          stall: stallOf(r, this.stallMinutes),
         };
       }),
     };
+  }
+  get stallMinutes() {
+    return this.config.stallAfterMinutes ?? DEFAULT_STALL_MINUTES;
+  }
+  // Best effort like report_metadata: a stall warning never changes business
+  // state, and each distinct stall is announced to Herdr exactly once.
+  async checkStall(p: Project, r: Run) {
+    const stall = stallOf(r, this.stallMinutes);
+    const known = this.stalls.get(r.run_id);
+    const same = (a: Stall, b: Stall) =>
+      a.agent_id === b.agent_id && a.since === b.since;
+    if (stall && !(known && same(known, stall))) {
+      this.stalls.set(r.run_id, stall);
+      await appendEvents(p.directory, [
+        { at: now(), run_id: r.run_id, kind: "stall", ...stall },
+      ]).catch(() => {});
+      await this.herdr
+        .cli([
+          "notification",
+          "show",
+          `홈페이지 ${p.project_id} 진행 멈춤`,
+          "--body",
+          `${stall.task_id} 태스크가 ${stall.minutes}분째 진행되지 않습니다. 대시보드에서 터미널을 확인하세요.`,
+          "--sound",
+          "request",
+        ])
+        .catch(() => {});
+    } else if (!stall && known) {
+      this.stalls.delete(r.run_id);
+      await appendEvents(p.directory, [
+        {
+          at: now(),
+          run_id: r.run_id,
+          kind: "stall_cleared",
+          agent_id: known.agent_id,
+          task_id: known.task_id,
+          status: r.status,
+        },
+      ]).catch(() => {});
+    }
   }
   async operation(
     p: Project,
@@ -561,6 +609,7 @@ export class Broker {
           changed = true;
           continue;
         }
+        const prior = a.runtime;
         a.runtime = {
           status: live.agent_status,
           fresh: true,
@@ -575,6 +624,11 @@ export class Broker {
             /* Keep unknown until the foreground process is verified. */
           }
         }
+        // Stall detection measures how long Herdr has reported one status.
+        a.runtime.changed_at =
+          prior?.status === a.runtime.status && prior.changed_at
+            ? prior.changed_at
+            : a.runtime.observed_at;
         changed = true;
         if (
           live.agent_status === "blocked" &&
@@ -877,6 +931,7 @@ export class Broker {
           }
         }
       }
+      await this.checkStall(p, r);
       if (terminal.has(r.status) || r.resume_required || !r.slot) continue;
       if (r.media.some((m) => ["pending", "running"].includes(m.status)))
         await this.pollMedia(p, r);

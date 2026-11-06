@@ -172,6 +172,7 @@ export interface Config {
   tsk?: { binary: string; stateDir: string };
   allowExecution: boolean;
   autoStart?: boolean;
+  stallAfterMinutes?: number;
   web?: { enabled: boolean; port: number };
 }
 export class Fault extends Error {

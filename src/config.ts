@@ -77,6 +77,13 @@ export async function config(file?: string): Promise<Config> {
       "invalid_config",
       "allowExecution and autoStart must be boolean; skills must be absolute paths",
     );
+  if (
+    c.stallAfterMinutes !== undefined &&
+    (!Number.isInteger(c.stallAfterMinutes) ||
+      c.stallAfterMinutes < 1 ||
+      c.stallAfterMinutes > 120)
+  )
+    fail("invalid_config", "stallAfterMinutes must be an integer 1..120");
   if (c.mcp) {
     for (const key of [
       "command",

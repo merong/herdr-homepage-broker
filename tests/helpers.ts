@@ -78,6 +78,14 @@ export class FakeHerdr extends Herdr {
   workspaces: any[] = [];
   counter = 0;
   failPrompt = false;
+  paneText = new Map<string, string>();
+  reads: string[][] = [];
+  async text(args: string[]) {
+    this.reads.push(args);
+    const text = this.paneText.get(args[2]);
+    if (text === undefined) throw new Error("pane not found");
+    return text;
+  }
   async api() {
     return { type: "workspace_metadata_updated" };
   }
@@ -137,6 +145,13 @@ export class FakeHerdr extends Herdr {
     if (args[0] === "agent" && args[1] === "prompt") {
       if (this.failPrompt) throw new Error("provider accepted but reply lost");
       return { agent: this.panes.find((x) => x.pane_id === args[2]) };
+    }
+    if (args[0] === "notification" && args[1] === "show")
+      return { type: "notification_shown" };
+    if (args[0] === "workspace" && args[1] === "focus") {
+      if (!this.workspaces.some((w) => w.workspace_id === args[2]))
+        throw new Error("workspace not found");
+      return { type: "workspace_focused" };
     }
     if (args[0] === "pane" && args[1] === "close") {
       this.panes = this.panes.filter((x) => x.pane_id !== args[2]);

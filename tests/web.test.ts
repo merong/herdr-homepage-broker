@@ -11,6 +11,8 @@ import { brokerSocket, config } from "../src/config.js";
 import { request } from "../src/broker/client.js";
 import { current, makeTask } from "../src/domain/engine.js";
 import { Dashboard, previewUrl } from "../src/web/server.js";
+import { parseAnsi } from "../src/web/ui/ansi.js";
+import { eventsFile, readEvents } from "../src/storage/events.js";
 
 const exec = promisify(execFile);
 async function setup() {
@@ -60,7 +62,11 @@ test("W01 HTTP assets, empty queue, IPC updates and sanitized status without wri
     for (const [route, marker] of [
       ["/", "홈페이지 제작 현황"],
       ["/app.js", "textContent"],
-      ["/style.css", ".workbench"],
+      ["/app.css", ".live-card"],
+      ["/tokens.css", "--accent"],
+      ["/bundle.css", ".term-body"],
+      ["/icons.js", "BrokerIcons"],
+      ["/ui/components.js", "BrokerUI"],
     ]) {
       const res = await fetch(f.url + route);
       assert.equal(res.status, 200);
@@ -437,4 +443,371 @@ test("W09 MCP endpoint returns checking promptly and shares checks across reader
     await dashboard.close();
     await f.close();
   }
+});
+
+// A submitted project whose PM already owns a Herdr pane.
+async function withPane(f: Awaited<ReturnType<typeof setup>>) {
+  await request(brokerSocket(f.config), f.submit("company"));
+  const p = f.b.store.state.projects.company,
+    r = current(p),
+    a = r.agents[0];
+  r.herdr.workspace_id = "w1";
+  a.herdr = { pane_id: "w1:p1", terminal_id: "term1", started: true };
+  a.runtime = { status: "working", fresh: true };
+  f.h.workspaces.push({ workspace_id: "w1" });
+  f.h.panes.push({
+    pane_id: "w1:p1",
+    terminal_id: "term1",
+    workspace_id: "w1",
+    agent_status: "working",
+    interactive_ready: true,
+  });
+  await f.b.save(p);
+  return { p, r, a };
+}
+
+test("W10 terminal mirror reads the PM pane through Herdr once per second per pane", async () => {
+  const f = await setup();
+  try {
+    const { p, a } = await withPane(f);
+    f.h.paneText.set("w1:p1", "\x1b[32m✓ done\x1b[0m\nnext");
+    const url = f.url + "/api/projects/company/terminal";
+    const [one, two] = await Promise.all([
+      fetch(url).then((r) => r.json()),
+      fetch(url).then((r) => r.json()),
+    ]);
+    assert.equal(one.available, true);
+    assert.equal(one.text, "\x1b[32m✓ done\x1b[0m\nnext");
+    assert.equal(one.pane_id, "w1:p1");
+    assert.equal(two.text, one.text);
+    assert.deepEqual(f.h.reads, [
+      ["pane", "read", "w1:p1", "--source", "visible", "--format", "ansi"],
+    ]);
+    assert.equal(
+      (await fetch(url + "?agent=" + a.agent_id).then((r) => r.json())).text,
+      one.text,
+    );
+    assert.equal((await httpRequest(url + "?raw=1")).status, 404);
+    assert.equal(
+      (await httpRequest(f.url + "/api/projects/missing/terminal")).status,
+      404,
+    );
+    a.herdr.pane_id = "w1:p9";
+    await f.b.save(p);
+    const failed = await fetch(url).then((r) => r.json());
+    assert.equal(failed.available, false);
+    assert.equal(failed.reason, "read_failed");
+    a.runtime = { status: "stopped", fresh: true };
+    await f.b.save(p);
+    assert.equal((await fetch(url).then((r) => r.json())).reason, "no_pane");
+    assert.equal(
+      f.h.calls.some((c) => c[0] !== "notification"),
+      false,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test("W11 events.jsonl records commit differences and pages newest first", async () => {
+  const f = await setup();
+  try {
+    await request(brokerSocket(f.config), f.submit("company"));
+    const p = f.b.store.state.projects.company,
+      r = current(p);
+    r.tasks = [makeTask("direction", "pm", "방향 정하기", [], ["reports/"])];
+    r.status = "running";
+    await f.b.save(p);
+    r.tasks[0].status = "running";
+    await f.b.save(p);
+    r.tasks[0].result = "방향 확정";
+    r.tasks[0].updated_at = new Date().toISOString();
+    r.questions.push({
+      request_id: "q1",
+      run_id: r.run_id,
+      agent_id: r.agents[0].agent_id,
+      task_id: "direction",
+      kind: "execution_choice",
+      question: "로고를 확인해주세요",
+      response_schema: { secret: "PRIVATE_SCHEMA" },
+      status: "open",
+    });
+    await f.b.save(p);
+    // An unrelated save (runtime only) adds nothing.
+    r.agents[0].runtime = { status: "idle", fresh: true };
+    await f.b.save(p);
+    const lines = (await fs.readFile(eventsFile(p.directory), "utf8"))
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    assert.deepEqual(
+      lines.map((e) => e.kind),
+      // The run's initial plan task is logged with the run itself.
+      ["run", "task", "status", "task", "task", "report", "input"],
+    );
+    assert.equal(lines[2].from, "queued");
+    assert.equal(lines[2].to, "running");
+    assert.equal(lines[4].to, "running");
+    assert.equal(lines[5].result, "방향 확정");
+    assert.equal(JSON.stringify(lines).includes("PRIVATE_"), false);
+    assert.ok(lines.every((e) => e.run_id === r.run_id));
+    const page = await (
+      await fetch(f.url + "/api/projects/company/events?limit=2")
+    ).json();
+    assert.deepEqual(
+      page.events.map((e: any) => e.kind),
+      ["input", "report"],
+    );
+    assert.equal(page.next_before, 5);
+    const rest = await (
+      await fetch(
+        f.url +
+          `/api/projects/company/events?limit=200&before=${page.next_before}`,
+      )
+    ).json();
+    assert.deepEqual(
+      rest.events.map((e: any) => e.kind),
+      ["task", "task", "status", "task", "run"],
+    );
+    assert.equal(rest.next_before, null);
+    assert.equal(
+      (await httpRequest(f.url + "/api/projects/company/events?limit=x"))
+        .status,
+      400,
+    );
+    // Other runs and a torn final line are skipped.
+    await fs.appendFile(
+      eventsFile(p.directory),
+      JSON.stringify({ at: "x", run_id: "other", kind: "run" }) + '\n{"torn',
+    );
+    assert.equal(
+      (await readEvents(p.directory, { run_id: r.run_id })).events.length,
+      7,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test("W12 stall: changed_at tracking, one Herdr notification, banner data and clear", async () => {
+  const f = await setup();
+  try {
+    const { p, r, a } = await withPane(f);
+    await f.b.observe(await f.h.snapshot());
+    const first = a.runtime.changed_at;
+    assert.ok(first);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await f.b.observe(await f.h.snapshot());
+    assert.equal(a.runtime.changed_at, first, "same status keeps changed_at");
+    f.h.panes[0].agent_status = "idle";
+    await f.b.observe(await f.h.snapshot());
+    assert.notEqual(a.runtime.changed_at, first, "status change resets it");
+
+    r.status = "running";
+    r.tasks = [makeTask("direction", "pm", "방향 정하기", [], ["reports/"])];
+    r.tasks[0].status = "running";
+    a.task_id = "direction";
+    a.runtime.changed_at = new Date(Date.now() - 11 * 60000).toISOString();
+    await f.b.save(p);
+    await f.b.checkStall(p, r);
+    await f.b.checkStall(p, r);
+    const notices = f.h.calls.filter((c) => c[0] === "notification");
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0][1], "show");
+    assert.ok(notices[0].includes("--sound"));
+    const status = await (await fetch(f.url + "/api/status")).json();
+    assert.equal(status.projects[0].stall.task_id, "direction");
+    assert.ok(status.projects[0].stall.minutes >= 11);
+    assert.ok(status.projects[0].agents[0].runtime.changed_at);
+    const boot = await (await fetch(f.url + "/api/bootstrap")).json();
+    assert.equal(boot.stall_after_minutes, 5);
+
+    // A blocked agent is a terminal_action request, not a stall.
+    a.runtime.status = "blocked";
+    assert.equal(f.b.status().projects[0].stall, null);
+    a.runtime.status = "working";
+    await f.b.checkStall(p, r);
+    const kinds = (await readEvents(p.directory)).events.map((e) => e.kind);
+    assert.equal(kinds[0], "stall_cleared");
+    assert.ok(kinds.includes("stall"));
+    assert.equal(
+      f.h.calls.filter((c) => c[0] === "notification").length,
+      1,
+      "clearing does not notify",
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test("W13 screenshots and generated images: listing, whitelist and containment", async () => {
+  const f = await setup();
+  try {
+    await request(brokerSocket(f.config), f.submit("company"));
+    const p = f.b.store.state.projects.company,
+      run = current(p).run_id,
+      dir = path.join(p.directory, ".herdr/runs", run);
+    const png = Buffer.from("89504e470d0a1a0a0000", "hex");
+    for (const file of [
+      "reports/look/1/desktop.png",
+      "reports/look/1/mobile-full.png",
+      "reports/look/final/desktop.png",
+      "assets/hero.png",
+      "assets/.hidden.png",
+    ]) {
+      await fs.mkdir(path.dirname(path.join(dir, file)), { recursive: true });
+      await fs.writeFile(path.join(dir, file), png);
+    }
+    await fs.writeFile(path.join(dir, "reports/look/1/issues.json"), "{}");
+    await fs.writeFile(
+      path.join(dir, "reports/look/1/verdict.md"),
+      "첫 화면 통과",
+    );
+    await fs.writeFile(path.join(dir, "assets/notes.txt"), "x");
+    await fs.writeFile(path.join(f.root, "secret.png"), png);
+    await fs.symlink(
+      path.join(f.root, "secret.png"),
+      path.join(dir, "assets/escape.png"),
+    );
+    const shots = await (
+      await fetch(f.url + "/api/projects/company/shots")
+    ).json();
+    assert.deepEqual(
+      shots.rounds.map((r: any) => [r.round, r.stage]),
+      [
+        ["1", "first-screen"],
+        ["final", "final"],
+      ],
+    );
+    assert.equal(shots.rounds[0].verdict, "첫 화면 통과");
+    assert.deepEqual(
+      shots.rounds[0].files.map((x: any) => x.name),
+      ["desktop.png", "mobile-full.png"],
+    );
+    // Symlinks, dotfiles and non-images are not listed.
+    assert.deepEqual(
+      shots.assets.map((x: any) => x.name),
+      ["hero.png"],
+    );
+    const image = await fetch(
+      f.url + `/api/projects/company/shots/${run}/1/desktop.png?v=1`,
+    );
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get("content-type"), "image/png");
+    assert.match(image.headers.get("cache-control")!, /immutable/);
+    assert.deepEqual(Buffer.from(await image.arrayBuffer()), png);
+    assert.equal(
+      (
+        await httpRequest(
+          f.url + `/api/projects/company/assets/${run}/hero.png`,
+        )
+      ).status,
+      200,
+    );
+    for (const route of [
+      `/api/projects/company/shots/${run}/1/issues.json`,
+      `/api/projects/company/shots/${run}/1/verdict.md`,
+      `/api/projects/company/shots/${run}/../../../meta.json`,
+      `/api/projects/company/shots/${run}/1/%2e%2e`,
+      `/api/projects/company/shots/${run}/1/desktop.png?x=1`,
+      `/api/projects/company/shots/../1/desktop.png`,
+      `/api/projects/company/assets/${run}/escape.png`,
+      `/api/projects/company/assets/${run}/.hidden.png`,
+      `/api/projects/company/assets/${run}/notes.txt`,
+      `/api/projects/company/assets/..%2f..%2fmeta.json`,
+      `/api/projects/company/shots?x=1`,
+      `/api/projects/other/shots`,
+    ])
+      assert.equal((await httpRequest(f.url + route)).status, 404, route);
+  } finally {
+    await f.close();
+  }
+});
+
+test("W14 Herdr focus requires the action token and changes no broker state", async () => {
+  const f = await setup();
+  try {
+    await request(brokerSocket(f.config), f.submit("company"));
+    const csrf = (await (await fetch(f.url + "/api/bootstrap")).json()).csrf;
+    const send = (body: any, token = csrf) =>
+      fetch(f.url + "/api/projects/focus", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: f.url,
+          "X-Homepage-Token": token,
+        },
+        body: JSON.stringify(body),
+      });
+    assert.equal((await send({ project_id: "company" }, "wrong")).status, 403);
+    const none = await send({ project_id: "company" });
+    assert.equal(none.status, 409);
+    assert.equal((await none.json()).error, "no_workspace");
+    assert.equal(
+      (await send({ project_id: "company", workspace_id: "w9" })).status,
+      409,
+    );
+    const p = f.b.store.state.projects.company;
+    current(p).herdr.workspace_id = "w1";
+    f.h.workspaces.push({ workspace_id: "w1" });
+    await f.b.save(p);
+    const before = JSON.stringify(f.b.store.state);
+    const ok = await send({ project_id: "company" });
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).workspace_id, "w1");
+    assert.deepEqual(f.h.calls.at(-1), ["workspace", "focus", "w1"]);
+    assert.equal(JSON.stringify(f.b.store.state), before);
+    current(p).herdr.workspace_id = "w2";
+    await f.b.save(p);
+    assert.equal((await send({ project_id: "company" })).status, 502);
+  } finally {
+    await f.close();
+  }
+});
+
+test("W15 stallAfterMinutes accepts integers 1..120 only", async () => {
+  const f = await fixture(),
+    file = path.join(f.root, "config.json");
+  try {
+    for (const stallAfterMinutes of [0, 121, 1.5, "5"]) {
+      await fs.writeFile(file, JSON.stringify({ stallAfterMinutes }));
+      await assert.rejects(() => config(file), /stallAfterMinutes/);
+    }
+    await fs.writeFile(file, JSON.stringify({ stallAfterMinutes: 30 }));
+    assert.equal((await config(file)).stallAfterMinutes, 30);
+  } finally {
+    await fs.rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("W16 ANSI parser maps SGR to terminal tokens and drops other escapes", () => {
+  const text = (l: any[]) => l.map((s) => s.text).join("");
+  const [a] = parseAnsi("\x1b[1;32mok\x1b[22m plain\x1b[0m");
+  assert.deepEqual(
+    a.map((s) => [s.text, s.classes]),
+    [
+      ["ok", ["t-green", "t-strong"]],
+      [" plain", ["t-green"]],
+    ],
+  );
+  const [b] = parseAnsi(
+    "\x1b[38;5;196mr\x1b[38;2;1;2;3mt\x1b[48;5;232mg\x1b[39;49m",
+  );
+  assert.equal(b[0].fg, "rgb(255,0,0)");
+  assert.equal(b[1].fg, "rgb(1,2,3)");
+  assert.equal(b[2].bg, "rgb(8,8,8)");
+  const [c] = parseAnsi("\x1b[38:2::10:20:30mx\x1b[0m");
+  assert.equal(c[0].fg, "rgb(10,20,30)");
+  const [d] = parseAnsi(
+    "\x1b]0;title\x07\x1b[2K\x1b[?25lA\rB\x1b[97mC\x1b[7mD",
+  );
+  assert.equal(text(d), "ABCD");
+  // Inverse swaps the bright-white foreground into the background.
+  assert.deepEqual(d.at(-1)!.classes, ["b-strong"]);
+  assert.deepEqual(parseAnsi("\x1b[7mE")[0][0].classes, ["t-inverse"]);
+  assert.ok(d.find((s) => s.text === "C")!.classes.includes("t-strong"));
+  const lines = parseAnsi("one\n\x1b[31mtwo\n\n  \n");
+  assert.equal(lines.length, 2);
+  assert.deepEqual(lines[1][0].classes, ["t-red"]);
+  assert.deepEqual(parseAnsi(""), [[]]);
 });

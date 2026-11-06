@@ -12,6 +12,7 @@ import {
   fail,
 } from "../contracts/types.js";
 import { checkpoint } from "../contracts/validate.js";
+import { appendEvents, diffEvents } from "./events.js";
 import { stateDir, brokerSocket } from "../config.js";
 const exec = promisify(execFile);
 export const hash = (v: string | Buffer) =>
@@ -181,9 +182,14 @@ export class Store {
         "Checkpoint outcome unknown; writer stopped, restart and reconcile",
       );
     }
+    const events = diffEvents(this.published, next);
     this.state = next;
     this.published = JSON.parse(serialized);
     await this.projectAll();
+    // The timeline is a display log: a failed append neither undoes the
+    // commit nor marks projections pending (which would gate execution).
+    for (const [directory, list] of events)
+      await appendEvents(directory, list).catch(() => {});
   }
   async projectAll() {
     this.pending = false;

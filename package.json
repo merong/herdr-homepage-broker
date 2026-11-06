@@ -1,6 +1,6 @@
 {
   "name": "herdr-homepage-broker",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "description": "Homepage job broker for an isolated Herdr session",
@@ -11,8 +11,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "tsc && node scripts/export-schemas.mjs && node scripts/copy-web.mjs",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc && tsc -p tsconfig.ui.json && node scripts/export-schemas.mjs && node scripts/copy-web.mjs && vite build --config vite.config.mjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.ui.json",
     "test": "npm run build && node --test dist/tests/*.test.js",
     "test:unit": "npm run build && node --test dist/tests/domain.test.js",
     "test:integration": "npm run build && node --test dist/tests/integration.test.js",
@@ -21,15 +21,21 @@
     "test:herdr": "npm run build && node dist/tests/herdr-live.js",
     "test:plugin": "npm run build && node dist/tests/plugin-live.js",
     "test:web": "npm run build && node --test dist/tests/web.test.js",
-    "format:check": "prettier --check \"src/**/*.ts\" \"src/web/public/*\" \"tests/**/*.ts\" \"scripts/*.mjs\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"src/web/ui/*.tsx\" \"src/web/public/*\" \"tests/**/*.ts\" \"scripts/*.mjs\" vite.config.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0"
   },
   "devDependencies": {
     "@types/node": "24.0.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "lucide-react": "1.55.0",
     "prettier": "3.6.2",
-    "typescript": "5.8.3"
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "typescript": "5.8.3",
+    "vite": "7.3.7"
   },
   "repository": {
     "type": "git",

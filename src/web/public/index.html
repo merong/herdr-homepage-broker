@@ -3,260 +3,293 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light" />
-    <title>Homepage · 제작 현황</title>
+    <meta name="color-scheme" content="light dark" />
+    <title>Homepage Broker · 홈페이지 제작 현황</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/style.css" />
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/bundle.css" />
+    <link rel="stylesheet" href="/app.css" />
+    <script src="/icons.js" defer></script>
+    <script src="/ui/components.js" defer></script>
     <script src="/app.js" defer></script>
     <script src="/actions.js" defer></script>
     <script src="/live.js" defer></script>
   </head>
   <body>
     <a class="skip" href="#content">본문으로 이동</a>
-    <aside class="sidebar">
-      <a class="brand" href="/" aria-label="Homepage 제작 현황"
-        ><span class="brand-icon">h.</span
-        ><span>homepage<span class="brand-sub">HERDR BROKER</span></span></a
-      >
-      <div class="sidebar-label">WORKSPACE</div>
-      <div class="nav-active">
-        <span>◫</span> 제작 현황 <span class="nav-count" id="nav-count">—</span>
-      </div>
-      <div class="session-box">
-        <span class="sidebar-label">실행 세션</span
-        ><strong><i class="dot"></i> homepage</strong>
-        <p>프로젝트별 작업공간<br />PM 1명 · 직접 제작</p>
-      </div>
-      <div class="sidebar-bottom">
-        <span class="read-only">homepage 전용</span>
-        <p>제작 요청은 CLI로 전달하고<br />JSON으로 상태를 확인합니다.</p>
-      </div>
-    </aside>
-    <div class="shell">
-      <header class="topbar">
-        <span
-          >워크스페이스 <span class="slash">/</span>
-          <strong>제작 현황</strong></span
+    <header class="toolbar app-toolbar">
+      <span class="toolbar-brand">Homepage Broker</span>
+      <span class="badge badge-muted badge-mono">homepage</span>
+      <span class="toolbar-sep"></span>
+      <nav class="segments segments-fit" aria-label="화면">
+        <a class="segment" href="#/" data-view="dashboard" aria-selected="true"
+          >대시보드</a
+        ><a
+          class="segment"
+          href="#/structure"
+          data-view="structure"
+          aria-selected="false"
+          >구조</a
         >
-        <div class="connection">
-          <button id="help-open" class="button small">도움말</button>
-          <span id="connection" role="status">연결 중</span
-          ><button id="refresh" class="button small">새로고침 ↻</button>
-        </div>
-      </header>
-      <main id="content">
-        <div class="toolbar">
-          <button id="checks-open" class="button">상태 체크</button
-          ><button id="request-open" class="button primary" disabled>
-            + 제작 요청
-          </button>
-        </div>
-        <div class="page-heading">
-          <div>
-            <p class="eyebrow">HOMEPAGE OPERATIONS</p>
-            <h1>홈페이지 제작 현황<span class="accent">.</span></h1>
-            <p class="subtitle">
-              요청부터 검토 대기까지, 프로젝트의 흐름을 확인하세요.
-            </p>
-          </div>
-          <div class="sync">
-            <span id="updated">첫 상태를 기다리고 있습니다</span
-            ><small
-              >실시간 수신 · 연결 지연 시 2초 간격 재조회 · 모델 호출
-              없음</small
+      </nav>
+      <span class="toolbar-spacer"></span>
+      <span id="connection" class="toolbar-status" role="status"
+        ><span class="dot"></span>연결 중</span
+      >
+      <button id="attn-open" class="btn btn-attn" data-icon="question" hidden>
+        입력 필요 <span id="attn-count" class="count-badge">0</span>
+      </button>
+      <button id="checks-open" class="btn" data-icon="refresh">
+        상태 체크
+      </button>
+      <button
+        id="request-open"
+        class="btn btn-primary"
+        data-icon="plus"
+        disabled
+      >
+        제작 요청
+      </button>
+      <span class="toolbar-sep"></span>
+      <button
+        id="help-open"
+        class="icon-btn"
+        data-icon="help"
+        aria-label="도움말"
+      ></button>
+      <button
+        id="inspector-toggle"
+        class="icon-btn"
+        data-icon="panel"
+        aria-label="인스펙터 보기"
+        aria-pressed="true"
+      ></button>
+    </header>
+    <div class="app-body">
+      <aside class="app-sidebar" aria-label="프로젝트 목록">
+        <div class="sidebar-top">
+          <label class="search-field" for="search"
+            ><span data-icon="search" class="icon-slot"></span
+            ><input
+              id="search"
+              type="search"
+              placeholder="프로젝트 검색"
+              autocomplete="off"
+          /></label>
+          <div class="segments" role="radiogroup" aria-label="상태 필터">
+            <button
+              class="segment"
+              role="radio"
+              data-filter="all"
+              aria-checked="true"
             >
+              전체 <span class="n" data-count="all">0</span></button
+            ><button
+              class="segment"
+              role="radio"
+              data-filter="active"
+              aria-checked="false"
+            >
+              진행 <span class="n" data-count="active">0</span></button
+            ><button
+              class="segment"
+              role="radio"
+              data-filter="queued"
+              aria-checked="false"
+            >
+              큐 <span class="n" data-count="queued">0</span></button
+            ><button
+              class="segment"
+              role="radio"
+              data-filter="review"
+              aria-checked="false"
+            >
+              검토 <span class="n" data-count="review">0</span>
+            </button>
           </div>
         </div>
-        <div id="notice" class="notice" role="status" hidden></div>
-        <div id="error" class="notice error" role="alert" hidden></div>
-        <section class="metrics" aria-label="프로젝트 요약">
-          <div class="metric">
-            <span>실행 슬롯</span
-            ><strong><b id="slots">—</b><small> / 2</small></strong
-            ><em>동시 제작 프로젝트</em>
+        <div id="project-list">
+          <p class="list-empty">프로젝트를 불러오고 있습니다.</p>
+        </div>
+        <div id="revision" class="sidebar-foot num">revision —</div>
+      </aside>
+      <main id="content" class="app-main" tabindex="-1">
+        <div class="content-head">
+          <div id="page-title" class="content-title">
+            <h1>홈페이지 제작 현황</h1>
           </div>
-          <div class="metric">
-            <span>큐 대기</span><strong id="queued">—</strong
-            ><em>실행을 기다리는 요청</em>
+          <span id="page-meta" class="content-meta"></span>
+          <span class="toolbar-spacer"></span>
+          <div id="page-actions" class="button-row"></div>
+        </div>
+        <div id="error" class="banner" data-tone="danger" role="alert" hidden>
+          <span data-icon="fail" class="icon-slot"></span>
+          <div id="error-text" class="banner-text"></div>
+        </div>
+        <div id="banners"></div>
+        <div id="view" class="content-body">
+          <div class="empty-state">
+            <p class="display">제작 현황을 연결하고 있습니다</p>
+            <p class="muted">브로커에서 현재 상태를 가져옵니다.</p>
           </div>
-          <div class="metric">
-            <span><i class="dot amber"></i> 입력 필요</span
-            ><strong id="waiting">—</strong><em>사용자 확인이 필요합니다</em>
-          </div>
-          <div class="metric">
-            <span><i class="dot green"></i> 검토 대기</span
-            ><strong id="review">—</strong><em>미리보기와 결과 확인</em>
-          </div>
-        </section>
-        <section class="mcp-panel" aria-label="MCP 서버 상태">
-          <div class="mcp-heading">
-            <div>
-              <p class="eyebrow">CONNECTED TOOLS</p>
-              <h2>
-                MCP 서버
-                <span id="mcp-summary" role="status">연결 확인 중</span>
-              </h2>
-            </div>
-            <button id="mcp-refresh" class="button small">MCP 다시 확인</button>
-          </div>
-          <p id="mcp-primary" class="help skeleton">
-            Higgsfield 연결 상태를 확인합니다.
-          </p>
-          <details id="mcp-details">
-            <summary id="mcp-count">서버 목록</summary>
-            <div id="mcp-servers" class="mcp-servers"></div>
-          </details>
-          <p id="mcp-note" class="help">
-            이미지를 생성하지 않는 접속 검사입니다.
-          </p>
-        </section>
-        <section class="workbench" aria-label="프로젝트 탐색">
-          <div class="projects">
-            <div class="panel-heading">
-              <h2>프로젝트 <span id="total">0</span></h2>
-              <span class="mono">QUEUE</span>
-            </div>
-            <label class="search"
-              ><span>⌕</span
-              ><input
-                id="search"
-                type="search"
-                placeholder="프로젝트 검색"
-                aria-label="프로젝트 검색"
-            /></label>
-            <div class="filters" role="group" aria-label="상태 필터">
-              <button data-filter="all" aria-pressed="true">전체</button
-              ><button data-filter="active" aria-pressed="false">진행 중</button
-              ><button data-filter="input" aria-pressed="false">
-                입력 필요</button
-              ><button data-filter="review" aria-pressed="false">검토</button>
-            </div>
-            <div id="project-list" aria-label="프로젝트 목록">
-              <p class="empty-list">프로젝트를 불러오고 있습니다.</p>
-            </div>
-          </div>
-          <section id="detail" class="detail" aria-label="선택한 프로젝트">
-            <div class="empty">
-              <span class="empty-icon">◫</span>
-              <h2>제작 현황을 연결하고 있습니다</h2>
-              <p>브로커에서 현재 상태를 가져옵니다.</p>
-            </div>
-          </section>
-        </section>
-        <footer>
-          <span><i class="dot"></i> homepage 세션 전용 · 로컬 접수·조회</span
-          ><span id="revision">revision —</span>
-        </footer>
+        </div>
       </main>
-    </div>
-    <dialog id="request-dialog" aria-labelledby="request-title">
-      <div class="dialog-heading">
-        <div>
-          <p class="eyebrow">NEW HOMEPAGE</p>
-          <h2 id="request-title">홈페이지 제작 요청</h2>
+      <aside id="inspector" class="app-inspector" aria-label="인스펙터">
+        <div class="inspector-tabs">
+          <div class="segments" role="tablist" aria-label="인스펙터 탭">
+            <button
+              class="segment"
+              role="tab"
+              data-tab="run"
+              aria-selected="true"
+            >
+              실행 상세</button
+            ><button
+              class="segment"
+              role="tab"
+              data-tab="ids"
+              aria-selected="false"
+            >
+              식별 정보
+            </button>
+          </div>
         </div>
+        <div id="inspector-body" class="inspector-body"></div>
+      </aside>
+    </div>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <dialog id="request-dialog" aria-labelledby="request-title">
+      <div class="dialog-head">
+        <h2 id="request-title" class="title">홈페이지 제작 요청</h2>
         <button
-          class="button small"
+          class="icon-btn"
+          data-icon="close"
           data-close="request-dialog"
           aria-label="제작 요청 닫기"
+        ></button>
+      </div>
+      <div class="dialog-body">
+        <p class="help">
+          문서를 준비하고 프로젝트를 초기화한 뒤 homepage 큐에 접수합니다. 같은
+          요청을 다시 보내도 프로젝트를 중복으로 만들지 않습니다.
+        </p>
+        <div class="button-row">
+          <button id="sample-fill" class="btn btn-sm">샘플 요청 채우기</button
+          ><button id="request-reset" class="btn btn-sm">새 요청 작성</button>
+        </div>
+        <label class="field"
+          ><span>프로젝트 ID</span
+          ><input
+            id="request-project"
+            placeholder="company-homepage"
+            pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}"
+            maxlength="64"
+            autocomplete="off"
+        /></label>
+        <label class="field"
+          ><span>생성할 프로젝트 디렉터리</span
+          ><input id="request-directory" class="mono" readonly /><small
+            >기본 상위 경로 + 프로젝트 ID로 자동 생성합니다. 저장 위치는
+            도움말의 projectsRoot 설정으로 바꿉니다.</small
+          ></label
         >
-          닫기 ×
-        </button>
+        <label class="field"
+          ><span>prd.md · 요구사항</span
+          ><textarea id="request-prd" rows="7" maxlength="60000"></textarea>
+        </label>
+        <label class="field"
+          ><span>design.md · 디자인 지침</span
+          ><textarea id="request-design" rows="6" maxlength="60000"></textarea>
+        </label>
+        <div id="request-result" class="note" role="status" hidden></div>
+        <p class="help">
+          초기화는 새 디렉터리·문서·요청 JSON을 준비합니다. 기존 프로젝트를
+          지우거나 되돌리지 않습니다. 실행 구성은 자동으로 준비하며, 제작 시작
+          버튼을 누르면 진행합니다.
+        </p>
       </div>
-      <p class="help">
-        문서를 준비하고 프로젝트를 초기화한 후 homepage 큐에 접수합니다. 동일
-        요청을 다시 전송해도 중복 프로젝트를 만들지 않습니다.
-      </p>
-      <div class="form-actions">
-        <button id="sample-fill" class="button small">샘플 요청 채우기</button
-        ><button id="request-reset" class="button small">새 요청 작성</button>
-      </div>
-      <label class="field"
-        >프로젝트 ID<input
-          id="request-project"
-          placeholder="company-homepage"
-          pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}"
-          maxlength="64"
-          autocomplete="off"
-      /></label>
-      <label class="field"
-        >생성할 프로젝트 디렉터리<input id="request-directory" readonly /><small
-          >기본 상위 경로 + 프로젝트 ID로 자동 생성합니다. 저장 위치 변경은
-          도움말의 projectsRoot 설정을 참고하세요.</small
-        ></label
-      >
-      <label class="field"
-        >prd.md · 요구사항<textarea
-          id="request-prd"
-          rows="7"
-          maxlength="60000"
-        ></textarea>
-      </label>
-      <label class="field"
-        >design.md · 디자인 지침<textarea
-          id="request-design"
-          rows="6"
-          maxlength="60000"
-        ></textarea>
-      </label>
-      <div id="request-result" class="notice" role="status" hidden></div>
-      <div class="form-actions">
-        <button id="request-init" class="button">프로젝트 초기화만</button
-        ><button id="request-send" class="button primary">
+      <div class="dialog-foot">
+        <button id="request-init" class="btn">프로젝트 초기화만</button
+        ><button id="request-send" class="btn btn-primary">
           초기화 후 homepage로 전송
         </button>
       </div>
-      <p class="help">
-        초기화는 새 디렉터리·문서·요청 JSON을 준비합니다. 기존 프로젝트를
-        삭제하거나 초기 상태로 되돌리지 않습니다. 초기화 시 실행 구성을 자동
-        준비하며, 제작 시작 버튼을 누르면 진행합니다.
-      </p>
     </dialog>
     <dialog id="execution-dialog" aria-labelledby="execution-title">
-      <div class="dialog-heading">
-        <div>
-          <p class="eyebrow">PROJECT EXECUTION</p>
-          <h2 id="execution-title">실행 준비</h2>
-        </div>
+      <div class="dialog-head">
+        <h2 id="execution-title" class="title">실행 준비</h2>
         <button
-          class="button small"
+          class="icon-btn"
+          data-icon="close"
           data-close="execution-dialog"
           aria-label="실행 준비 닫기"
-        >
-          닫기 ×
-        </button>
+        ></button>
       </div>
-      <p id="execution-target" class="help"></p>
-      <div
-        id="execution-checks"
-        class="execution-checks"
-        aria-live="polite"
-      ></div>
-      <p id="execution-note" class="help"></p>
-      <div id="execution-result" class="notice" role="status" hidden></div>
-      <div class="form-actions">
-        <button id="execution-refresh" class="button">
-          준비 상태 다시 확인
-        </button>
-        <button id="execution-send" class="button primary" disabled>
+      <div class="dialog-body">
+        <p id="execution-target" class="help mono"></p>
+        <div
+          id="execution-checks"
+          class="group execution-checks"
+          aria-live="polite"
+        ></div>
+        <p id="execution-note" class="help"></p>
+        <div id="execution-result" class="note" role="status" hidden></div>
+      </div>
+      <div class="dialog-foot">
+        <button id="execution-refresh" class="btn">준비 상태 다시 확인</button
+        ><button id="execution-send" class="btn btn-primary" disabled>
           실행 요청
         </button>
       </div>
     </dialog>
     <dialog id="help-dialog" aria-labelledby="help-title">
-      <div class="dialog-heading">
-        <h2 id="help-title">홈페이지 브로커 사용법</h2>
-        <button class="button small" data-close="help-dialog">닫기 ×</button>
+      <div class="dialog-head">
+        <h2 id="help-title" class="title">홈페이지 브로커 사용법</h2>
+        <button
+          class="icon-btn"
+          data-icon="close"
+          data-close="help-dialog"
+          aria-label="도움말 닫기"
+        ></button>
       </div>
-      <div id="help-content"></div>
+      <div id="help-content" class="dialog-body"></div>
     </dialog>
     <dialog id="inspect-dialog" aria-labelledby="inspect-title">
-      <div class="dialog-heading">
-        <h2 id="inspect-title">상태 확인</h2>
-        <button class="button small" data-close="inspect-dialog">닫기 ×</button>
+      <div class="dialog-head">
+        <h2 id="inspect-title" class="title">상태 확인</h2>
+        <button
+          class="icon-btn"
+          data-icon="close"
+          data-close="inspect-dialog"
+          aria-label="상태 확인 닫기"
+        ></button>
       </div>
-      <p id="inspect-note" class="help"></p>
-      <pre id="inspect-data" class="json-output"></pre>
+      <div class="dialog-body">
+        <p id="inspect-note" class="help"></p>
+        <pre id="inspect-data" class="json-output"></pre>
+      </div>
+    </dialog>
+    <dialog id="mcp-dialog" aria-labelledby="mcp-title">
+      <div class="dialog-head">
+        <h2 id="mcp-title" class="title">MCP 서버</h2>
+        <button
+          class="icon-btn"
+          data-icon="close"
+          data-close="mcp-dialog"
+          aria-label="MCP 서버 닫기"
+        ></button>
+      </div>
+      <div class="dialog-body">
+        <p id="mcp-primary" class="help">Higgsfield 연결 상태를 확인합니다.</p>
+        <div id="mcp-servers" class="group"></div>
+        <p id="mcp-note" class="help">
+          이미지를 생성하지 않는 접속 검사입니다.
+        </p>
+      </div>
+      <div class="dialog-foot">
+        <button id="mcp-refresh" class="btn">MCP 다시 확인</button>
+      </div>
     </dialog>
     <noscript
       >진행 상태를 표시하려면 브라우저에서 JavaScript를 활성화하세요.</noscript
