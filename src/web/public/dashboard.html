@@ -161,7 +161,7 @@
       </aside>
     </div>
     <div id="toast" class="toast" role="status" hidden></div>
-    <dialog id="request-dialog" aria-labelledby="request-title">
+    <dialog id="request-dialog" aria-labelledby="request-title" data-tab="chat">
       <div class="dialog-head">
         <h2 id="request-title" class="title">홈페이지 제작 요청</h2>
         <button
@@ -171,7 +171,54 @@
           aria-label="제작 요청 닫기"
         ></button>
       </div>
-      <div class="dialog-body">
+      <div class="request-tabs">
+        <div
+          class="segments segments-fit"
+          role="tablist"
+          aria-label="요청 작성 방식"
+        >
+          <button
+            id="request-tab-chat"
+            class="segment"
+            role="tab"
+            data-request-tab="chat"
+            aria-controls="request-chat"
+            aria-selected="true"
+          >
+            대화로 만들기</button
+          ><button
+            id="request-tab-docs"
+            class="segment"
+            role="tab"
+            data-request-tab="docs"
+            aria-controls="request-docs"
+            aria-selected="false"
+          >
+            문서 직접 작성
+          </button>
+        </div>
+      </div>
+      <div
+        id="request-chat"
+        class="request-chat"
+        role="tabpanel"
+        aria-labelledby="request-tab-chat"
+      >
+        <p class="help">
+          화면 구성 요소(ui/components.js)를 불러오지 못했습니다. 문서 직접
+          작성을 사용하세요.
+        </p>
+      </div>
+      <div
+        id="request-docs"
+        class="dialog-body"
+        role="tabpanel"
+        aria-labelledby="request-tab-docs"
+        hidden
+      >
+        <div id="request-agent-note" class="note" role="status" hidden>
+          <span>에이전트가 만든 문서입니다. 확인하고 고친 뒤 전송하세요.</span>
+        </div>
         <p class="help">
           문서를 준비하고 프로젝트를 초기화한 뒤 homepage 큐에 접수합니다. 같은
           요청을 다시 보내도 프로젝트를 중복으로 만들지 않습니다.
@@ -211,7 +258,7 @@
           버튼을 누르면 진행합니다.
         </p>
       </div>
-      <div class="dialog-foot">
+      <div id="request-foot" class="dialog-foot" hidden>
         <button id="request-init" class="btn">프로젝트 초기화만</button
         ><button id="request-send" class="btn btn-primary">
           초기화 후 homepage로 전송

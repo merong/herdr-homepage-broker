@@ -36,6 +36,7 @@
     } catch {}
     lock(false);
     $("request-result").hidden = true;
+    $("request-agent-note").hidden = true;
     $("request-project").value = sample
       ? `move-in-cleaning-${Date.now().toString(36)}`
       : "";
@@ -142,6 +143,58 @@
       for (const id of ["request-init", "request-send", "request-reset"])
         $(id).disabled = false;
     }
+  }
+  // 대화로 만들기 (React Concept) and 문서 직접 작성 share the dialog. The chat
+  // only fills the document fields; sending stays on the buttons below them.
+  let requestTab = "chat";
+  const concept = {
+    onUseDraft(d) {
+      newDraft(false);
+      $("request-project").value = d.project_id;
+      $("request-prd").value = d.prd;
+      $("request-design").value = d.design;
+      directory();
+      $("request-agent-note").hidden = false;
+      showRequestTab("docs");
+      $("request-docs").scrollTop = 0;
+      $("request-project").focus({ preventScroll: true });
+    },
+    onManual: () => showRequestTab("docs"),
+  };
+  function renderConcept() {
+    if (!window.BrokerUI) return;
+    const el = window.BrokerUI.slot(
+      "request-concept",
+      "Concept",
+      {
+        ...concept,
+        csrf: boot?.csrf ?? null,
+        active: $("request-dialog").open && requestTab === "chat",
+      },
+      "concept-slot",
+      true,
+    );
+    if (el.parentNode !== $("request-chat"))
+      $("request-chat").replaceChildren(el);
+  }
+  function showRequestTab(tab) {
+    requestTab = window.BrokerUI ? tab : "docs";
+    $("request-dialog").dataset.tab = requestTab;
+    document.querySelectorAll("[data-request-tab]").forEach((b) => {
+      b.setAttribute(
+        "aria-selected",
+        String(b.dataset.requestTab === requestTab),
+      );
+    });
+    $("request-chat").hidden = requestTab !== "chat";
+    $("request-docs").hidden = requestTab !== "docs";
+    $("request-foot").hidden = requestTab !== "docs";
+    renderConcept();
+  }
+  function openRequest() {
+    if (!$("request-dialog").open) $("request-dialog").showModal();
+    // A kept init/submit request opens where its retry buttons are.
+    showRequestTab(draft ? "docs" : requestTab);
   }
   async function inspect(title, url, note) {
     $("inspect-title").textContent = title;
@@ -338,7 +391,11 @@
   document
     .querySelectorAll("[data-close]")
     .forEach((b) => (b.onclick = () => $(b.dataset.close).close()));
-  $("request-open").onclick = () => $("request-dialog").showModal();
+  $("request-open").onclick = openRequest;
+  document
+    .querySelectorAll("[data-request-tab]")
+    .forEach((b) => (b.onclick = () => showRequestTab(b.dataset.requestTab)));
+  $("request-dialog").addEventListener("close", renderConcept);
   $("sample-fill").onclick = () => newDraft(true);
   $("request-reset").onclick = () => newDraft(false);
   $("request-project").oninput = directory;
@@ -434,8 +491,7 @@
   function requestFromHash() {
     if (location.hash !== "#/request") return;
     history.replaceState(null, "", "#/");
-    if (boot?.can_submit && !$("request-dialog").open)
-      $("request-dialog").showModal();
+    if (boot?.can_submit) openRequest();
   }
   api("/api/bootstrap")
     .then((data) => {
@@ -461,6 +517,7 @@
           );
         }
       } catch {}
+      showRequestTab(draft ? "docs" : "chat");
     })
     .catch(() => {
       $("help-content").textContent =

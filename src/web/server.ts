@@ -2,7 +2,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { Config, fail } from "../contracts/types.js";
+import { Config, Fault, fail } from "../contracts/types.js";
 import { projectDirectory, projectFiles, sample } from "../projects/manage.js";
 import { projectCli } from "./actions.js";
 import { Herdr } from "../herdr/transport.js";
@@ -15,6 +15,7 @@ import { readEvents } from "../storage/events.js";
 import { DEFAULT_STALL_MINUTES } from "../domain/stall.js";
 import { listAssets, listShots, resolveImage, runDir } from "./files.js";
 import { showcase } from "./showcase.js";
+import { Concepts } from "../concept/store.js";
 
 type Snapshot = ReturnType<Broker["status"]>;
 
@@ -98,6 +99,32 @@ export function webSnapshot(s: Snapshot) {
   };
 }
 
+async function readJson(req: http.IncomingMessage, limit: number) {
+  let text = "";
+  req.setEncoding("utf8");
+  for await (const chunk of req) {
+    text += chunk;
+    if (Buffer.byteLength(text) > limit)
+      fail("input_too_large", `Request exceeds ${limit / 1024} KiB`);
+  }
+  return JSON.parse(text);
+}
+
+const conceptStatus: Record<string, number> = {
+  invalid_request: 400,
+  input_too_large: 413,
+  unknown_concept: 404,
+  concept_busy: 409,
+  concept_turn_limit: 409,
+  concept_not_ready: 409,
+  concept_capacity: 503,
+  concept_claude_missing: 503,
+  concept_login_required: 503,
+  concept_timeout: 504,
+  concept_failed: 502,
+  concept_output_invalid: 502,
+};
+
 export function previewUrl(status: string, raw?: string): string | null {
   if (status !== "ready" || !raw) return null;
   try {
@@ -127,6 +154,7 @@ export class Dashboard {
   private mcp: McpHealth;
   private herdr?: Herdr;
   private panes = new Map<string, { at: number; read: Promise<string> }>();
+  private concepts?: Concepts;
   constructor(
     private read: () => Promise<Snapshot>,
     private config?: Config,
@@ -135,6 +163,19 @@ export class Dashboard {
   ) {
     this.mcp = mcp ?? new McpHealth(config?.mcp);
     this.herdr = herdr ?? (config ? new Herdr(config) : undefined);
+    if (config)
+      this.concepts = new Concepts(
+        path.join(config.stateRoot, "concepts"),
+        async (id) => {
+          // Anything but "not there" (invalid ID, unreadable) counts as taken.
+          try {
+            await fs.lstat(projectDirectory(config, id));
+          } catch (e: any) {
+            return e?.code !== "ENOENT";
+          }
+          return true;
+        },
+      );
   }
 
   // Several viewers (list thumbnail + detail mirror, more tabs) share one
@@ -282,6 +323,13 @@ export class Dashboard {
       return;
     }
     const route = req.url;
+    const concept = route?.match(
+      /^\/api\/concepts(?:\/([a-zA-Z0-9_-]{1,128})(\/messages|\/documents)?)?$/,
+    );
+    if (concept && this.concepts) {
+      await this.conceptRoute(req, res, concept, json);
+      return;
+    }
     if (
       req.method === "POST" &&
       this.config &&
@@ -292,23 +340,12 @@ export class Dashboard {
         "/api/projects/focus",
       ].includes(route ?? "")
     ) {
-      if (
-        req.headers.origin !== `http://${req.headers.host}` ||
-        req.headers["x-homepage-token"] !== this.csrf ||
-        req.headers["content-type"]?.split(";")[0] !== "application/json"
-      ) {
+      if (!this.actionAllowed(req)) {
         json(403, { error: "action_token_required" });
         return;
       }
       try {
-        let text = "";
-        req.setEncoding("utf8");
-        for await (const chunk of req) {
-          text += chunk;
-          if (Buffer.byteLength(text) > 160 * 1024)
-            fail("input_too_large", "Request exceeds 160 KiB");
-        }
-        const input = JSON.parse(text);
+        const input = await readJson(req, 160 * 1024);
         if (!input || typeof input.project_id !== "string")
           fail("invalid_project", "project_id is required");
         projectDirectory(this.config, input.project_id);
@@ -577,6 +614,70 @@ export class Dashboard {
     }
   }
 
+  // Every browser write: same origin, the bootstrap token and a JSON body.
+  private actionAllowed(req: http.IncomingMessage) {
+    return (
+      req.headers.origin === `http://${req.headers.host}` &&
+      req.headers["x-homepage-token"] === this.csrf &&
+      req.headers["content-type"]?.split(";")[0] === "application/json"
+    );
+  }
+
+  // Concept chat (대화로 만들기): create, send one message, write the
+  // documents, read for reload. Replies come from a tool-less headless Claude
+  // (src/concept); the result is only a draft that the user sends through
+  // init/submit as before.
+  private async conceptRoute(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    [, id, action]: RegExpMatchArray,
+    json: (code: number, body: unknown) => void,
+  ) {
+    const allow = id && !action ? ["GET", "HEAD"] : ["POST"];
+    if (!allow.includes(req.method ?? "")) {
+      res.setHeader("Allow", allow.join(", "));
+      json(405, { error: "method_not_allowed" });
+      return;
+    }
+    const post = req.method === "POST";
+    if (post && !this.actionAllowed(req)) {
+      json(403, { error: "action_token_required" });
+      return;
+    }
+    try {
+      if (!post) {
+        json(200, await this.concepts!.get(id));
+        return;
+      }
+      let input;
+      try {
+        input = await readJson(req, 32 * 1024);
+      } catch (e: any) {
+        if (e.code === "input_too_large")
+          fail("input_too_large", "요청이 너무 큽니다.");
+        fail("invalid_request", "요청 형식이 올바르지 않습니다.");
+      }
+      if (!id) {
+        if (!input || typeof input !== "object" || Object.keys(input).length)
+          fail("invalid_request", "새 대화 요청에는 내용을 보내지 않습니다.");
+        json(200, await this.concepts!.create());
+      } else if (action === "/documents")
+        json(200, await this.concepts!.compose(id, input));
+      else json(200, await this.concepts!.send(id, input));
+    } catch (e: any) {
+      // Fault messages are written for the user; anything else (file system,
+      // spawn) may carry paths, so only a generic message leaves the server.
+      const code = e instanceof Fault ? e.code : "concept_failed";
+      json(conceptStatus[code] ?? 500, {
+        error: code,
+        message:
+          e instanceof Fault
+            ? e.message
+            : "대화를 처리하지 못했습니다. 다시 시도하세요.",
+      });
+    }
+  }
+
   // Per-project read routes: terminal mirror, timeline, screenshots, images.
   private async projectRoute(
     route: string,
@@ -707,6 +808,7 @@ export class Dashboard {
   async close() {
     this.url = null;
     this.mcp.close();
+    this.concepts?.close();
     clearInterval(this.streamTimer);
     for (const res of this.streams) res.end();
     this.streams.clear();

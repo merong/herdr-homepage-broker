@@ -91,11 +91,14 @@ async function onPath(name: string, env: NodeJS.ProcessEnv) {
 // profile may put a different python3 first than the broker's inherited PATH.
 // Resolve tools the same way; fall back to PATH when the shell gives no answer.
 const shellCache = new Map<string, { at: number; tools: ShellTools }>();
-type ShellTools = { python3?: string; cwebp?: string };
-async function loginShellTools(env: NodeJS.ProcessEnv) {
+type ShellTools = Record<string, string | undefined>;
+async function loginShellTools(
+  env: NodeJS.ProcessEnv,
+  names = ["python3", "cwebp"],
+) {
   const shell = env.SHELL;
   if (!shell || !path.isAbsolute(shell)) return;
-  const key = [shell, env.HOME, env.PATH].join("\0");
+  const key = [shell, env.HOME, env.PATH, ...names].join("\0");
   const hit = shellCache.get(key);
   if (hit && Date.now() - hit.at < 600_000) return hit.tools;
   try {
@@ -106,7 +109,7 @@ async function loginShellTools(env: NodeJS.ProcessEnv) {
         "-i",
         "-c",
         // Leading newline: profile output without one must not hide the marker.
-        'printf "\\n%s\\n" "__homepage_python3=$(command -v python3)" "__homepage_cwebp=$(command -v cwebp)"',
+        `printf "\\n%s\\n" ${names.map((n) => `"__homepage_${n}=$(command -v ${n})"`).join(" ")}`,
       ],
       { cwd: env.HOME || "/", env, timeout: 5000 },
     );
@@ -114,11 +117,19 @@ async function loginShellTools(env: NodeJS.ProcessEnv) {
     const { stdout } = await run;
     const found = (name: string) =>
       new RegExp(`^__homepage_${name}=(/.*)$`, "m").exec(stdout)?.[1].trim();
-    if (!/^__homepage_python3=/m.test(stdout)) return;
-    const tools = { python3: found("python3"), cwebp: found("cwebp") };
+    if (!new RegExp(`^__homepage_${names[0]}=`, "m").test(stdout)) return;
+    const tools = Object.fromEntries(names.map((n) => [n, found(n)]));
     shellCache.set(key, { at: Date.now(), tools });
     return tools;
   } catch {}
+}
+
+// The concept chat runs Claude from the broker itself: the broker PATH first
+// (like `claude mcp list`), then the PM pane's login shell.
+export async function findCommand(name: "claude", env = process.env) {
+  return (
+    (await onPath(name, env)) ?? (await loginShellTools(env, [name]))?.[name]
+  );
 }
 
 // Advisory only: never installs or blocks. look.py needs Python Playwright;

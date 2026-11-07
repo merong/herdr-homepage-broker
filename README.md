@@ -3,6 +3,7 @@
 `homepage` 전용 Herdr 세션에서 홈페이지 제작 요청을 접수하고 프로젝트·에이전트·작업 상태를 JSON으로 관리하는 macOS 플러그인입니다.
 
 - 웹 UI에서 샘플 요청 작성 → 디렉터리·PRD/design 초기화 → 브로커 CLI로 큐 접수.
+- 대화로 제작 요청 만들기: 제작 요청 창에서 에이전트가 쉬운 질문 몇 개로 컨셉을 정리하고 PRD/design 초안을 만듭니다. 초안은 문서 탭에서 확인·수정한 뒤 기존 버튼으로 접수합니다(도구 없는 `claude -p`, Herdr pane·슬롯과 무관).
 - Herdr CLI와 Socket API로 최대 2개 프로젝트를 처리. 프로젝트마다 PM pane 하나만 생성합니다. 실행 후 지침 파일을 프롬프트로 전달하고, PM이 디자인·카피·이미지·구현을 직접 진행합니다. 작업 보고와 JSON 상태 갱신도 PM이 담당합니다.
 - Claude Code `claude-opus-5-5`, high effort. homepage-studio 스킬, 시각 판단 스킬 세 개(design-taste, high-end-visual-design, frontend-design), 화면 캡처 스크립트 `look.py`를 번들로 제공하고, Claude의 Higgsfield MCP 연결을 재사용.
 - `meta.json`, `task.json`, `agents.json` 상태 확인, 동일 요청 재전송 방지, 재시작 후 명시적 재개.
@@ -21,7 +22,7 @@ herdr --session homepage
 별도 터미널에서 플러그인을 설치합니다.
 
 ```sh
-herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.11.0 --yes
+herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.12.0 --yes
 ```
 
 `homepage` 작업공간에서 시작합니다. 작업공간이 없다면 `herdr --session homepage workspace create --cwd "$HOME" --label homepage-control --focus`로 만듭니다.
@@ -31,7 +32,7 @@ herdr --session homepage plugin action invoke start --plugin herdr-homepage-brok
 herdr --session homepage plugin action invoke open-web --plugin herdr-homepage-broker
 ```
 
-기본 웹 주소는 `http://127.0.0.1:7318`입니다. 첫 화면은 랜딩 페이지(아래쪽에 실제 제작 사례)이고 대시보드는 `/dashboard`입니다. 대시보드의 **제작 요청 → 샘플 요청 채우기 → 초기화 후 homepage로 전송**으로 접수를 시험할 수 있습니다. 기존 프로젝트를 지우는 초기화 기능은 제공하지 않습니다.
+기본 웹 주소는 `http://127.0.0.1:7318`입니다. 첫 화면은 랜딩 페이지(아래쪽에 실제 제작 사례)이고 대시보드는 `/dashboard`입니다. 대시보드의 **제작 요청 → 대화로 만들기**에서 질문에 답해 문서를 만들거나, **문서 직접 작성 → 샘플 요청 채우기 → 초기화 후 homepage로 전송**으로 접수를 시험할 수 있습니다. 기존 프로젝트를 지우는 초기화 기능은 제공하지 않습니다.
 
 [설치·업데이트](docs/installation.md) · [사용법·경로·JSON 상태](docs/usage.md)
 
