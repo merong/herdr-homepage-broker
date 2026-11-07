@@ -271,7 +271,8 @@ export function Showcase(props: {
       aria-labelledby="lp-showcase-title"
     >
       <div className="lp-wrap">
-        <div className="lp-showcase-head">
+        <div className="lp-head">
+          <p className="lp-eyebrow">제작 사례</p>
           <h2 id="lp-showcase-title" className="lp-h2">
             브로커가 만든 홈페이지
           </h2>

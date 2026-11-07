@@ -3,7 +3,15 @@
 // hash before the landing paints. The landing's own section anchors stay here.
 (() => {
   const hash = location.hash;
-  const own = ["#main", "#flow", "#watch", "#showcase"];
+  const own = [
+    "#main",
+    "#team",
+    "#examples",
+    "#showcase",
+    "#flow",
+    "#watch",
+    "#faq",
+  ];
   if (
     hash.startsWith("#/") ||
     (/^#[a-zA-Z0-9_-]+$/.test(hash) && !own.includes(hash))

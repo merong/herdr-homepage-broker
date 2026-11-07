@@ -847,7 +847,16 @@ test("W17 landing at /, dashboard at /dashboard, landing images and legacy hash 
       ),
     );
     let total = 0;
-    for (const name of ["hero", "direction", "first-screen", "build-out"]) {
+    for (const name of [
+      "agent-concept",
+      "agent-broker",
+      "agent-pm",
+      "agent-image",
+      "step-direction",
+      "step-first-screen",
+      "step-build-out",
+      "team",
+    ]) {
       const res = await fetch(f.url + `/landing/${name}.webp`);
       assert.equal(res.status, 200, name);
       assert.equal(res.headers.get("content-type"), "image/webp");
@@ -866,6 +875,7 @@ test("W17 landing at /, dashboard at /dashboard, landing images and legacy hash 
       "/dashboard.html",
       "/landing/",
       "/landing/other.webp",
+      "/landing/hero.webp",
       "/landing/../config.json",
     ])
       assert.equal((await httpRequest(f.url + route)).status, 404, route);
@@ -890,6 +900,9 @@ test("W17 landing at /, dashboard at /dashboard, landing images and legacy hash 
       ["#showcase", null],
       ["#flow", null],
       ["#watch", null],
+      ["#team", null],
+      ["#examples", null],
+      ["#faq", null],
       ["#main", null],
       ["", null],
       ["#%EC%82%AC%EB%A1%80", null],

@@ -49,6 +49,9 @@ type ComposeFailure = { id: string; code: string; message: string };
 
 const KEY = "homepage-concept-v1";
 const MAX_TEXT = 2000;
+// The landing's first-line box (Landing.tsx) leaves its text here once; it
+// only fills the input and is never sent on its own.
+const SEED = "homepage-concept-seed";
 // The model may take up to 120 s (a turn) or 240 s (documents); the server
 // keeps the result even if this request gives up, and a resend with the same
 // id returns it.
@@ -75,6 +78,16 @@ function storage(id?: string | null) {
     else sessionStorage.removeItem(KEY);
   } catch {}
   return null;
+}
+
+function takeSeed() {
+  try {
+    const text = sessionStorage.getItem(SEED) ?? "";
+    sessionStorage.removeItem(SEED);
+    return text.slice(0, MAX_TEXT);
+  } catch {
+    return "";
+  }
 }
 
 // Ticks once a second only while a reply is being made.
@@ -116,7 +129,7 @@ export function Concept(props: {
   const [composeFailed, setComposeFailed] = useState<ComposeFailure | null>(
     null,
   );
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(takeSeed);
   const [cardOpen, setCardOpen] = useState(false);
   const log = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -173,7 +186,8 @@ export function Concept(props: {
       const v: View = await call("/api/concepts", {});
       storage(v.concept_id);
       setView(v);
-      setInput("");
+      // Only 초기화 clears the box; a first open keeps the landing's line.
+      if (fresh) setInput("");
     } catch (e: any) {
       setLoadError(e.message);
     } finally {
