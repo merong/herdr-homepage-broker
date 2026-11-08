@@ -20,15 +20,6 @@ const tones = {
   failed: "danger",
 };
 const outlined = new Set(["paused", "cancelling", "cancelled", "superseded"]);
-const taskNames = {
-  pending: "대기",
-  running: "진행 중",
-  waiting_input: "입력 대기",
-  retrying: "재시도",
-  completed: "완료",
-  failed: "실패",
-  cancelled: "취소됨",
-};
 const runtimeNames = {
   working: "working",
   busy: "working",
@@ -59,8 +50,14 @@ const groups = [
   ["review", "검토 대기", ["review_pending"]],
   ["ended", "종료", ["failed", "cancelled", "superseded"]],
 ];
+// 작업 재개 follows resume_required, not the status alone: answering a paused
+// run's question moves it to queued, and it still waits for an explicit resume.
+const needsResume = (p) =>
+  p.status === "paused" || (p.status === "queued" && p.resume_required);
 const groupOf = (p) =>
-  groups.find((g) => g[2].includes(p.status))?.[0] ?? "ended";
+  needsResume(p)
+    ? "paused"
+    : (groups.find((g) => g[2].includes(p.status))?.[0] ?? "ended");
 const filters = {
   all: () => true,
   active: (p) => groupOf(p) === "active",
@@ -280,14 +277,19 @@ function listSub(p) {
       p.execution_requested ? "큐 대기 · 시작 요청됨" : "큐 대기",
     );
   } else if (g === "paused") {
-    sub.append(dot(), `일시정지${p.reason ? ` · ${p.reason}` : ""}`);
+    sub.append(
+      dot(),
+      p.status === "paused"
+        ? `일시정지${p.reason ? ` · ${p.reason}` : ""}`
+        : "답변 접수됨 · 재개 필요",
+    );
   } else
     sub.append(dot(p.status === "failed" ? "danger" : ""), names[p.status]);
   return sub;
 }
 function listEnd(p) {
   const g = groupOf(p);
-  if (g === "active") return duration(minutesSince(p.created_at));
+  if (g === "active") return `접수 후 ${duration(minutesSince(p.created_at))}`;
   if (!p.created_at) return "";
   const today =
     new Date().toDateString() === new Date(p.created_at).toDateString();
@@ -306,9 +308,9 @@ function renderList(selectedId) {
   );
   const list = $("project-list");
   list.replaceChildren();
-  for (const [key, title, statuses] of groups) {
+  for (const [key, title] of groups) {
     const items = visible
-      .filter((p) => statuses.includes(p.status))
+      .filter((p) => groupOf(p) === key)
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     if (!items.length) continue;
     const head = el("div", "list-head");
@@ -319,22 +321,32 @@ function renderList(selectedId) {
       row.href = `#/p/${encodeURIComponent(p.project_id)}`;
       row.dataset.focus = `project:${p.project_id}`;
       row.setAttribute("aria-selected", String(p.project_id === selectedId));
+      // Running projects show the PM terminal; the rest their latest result
+      // screen, which only changes with a new revision once the run is idle.
       const thumb =
-        key === "active" || key === "review"
+        key === "active"
           ? slot(
+              `thumb:${p.project_id}`,
+              "TerminalThumb",
+              { project: p, size: "list" },
+              "list-thumb",
+            )
+          : slot(
               `thumb:${p.project_id}`,
               "ListThumb",
               {
                 projectId: p.project_id,
                 runId: p.run_id,
                 revision: p.revision,
+                poll: false,
               },
               "list-thumb",
-            )
-          : el("span", "list-thumb");
+            );
       const main = el("span", "list-main");
-      main.append(el("span", "list-title", p.project_id), listSub(p));
-      row.append(thumb, main, el("span", "list-end", listEnd(p)));
+      const name = el("span", "list-title", p.project_id);
+      name.title = p.project_id;
+      main.append(name, listSub(p), el("span", "list-meta", listEnd(p)));
+      row.append(thumb, main);
       box.append(row);
     }
     list.append(head, box);
@@ -445,10 +457,6 @@ function stat(label, value, sub, tone, iconName) {
   return s;
 }
 
-function stageBar(p, size) {
-  return slot(`stages:${size}:${p.project_id}`, "StageBar", { project: p });
-}
-
 function liveCard(p) {
   const card = el("article", "live-card");
   if (p.stall || openQuestions(p).length) card.dataset.tone = "warn";
@@ -468,18 +476,15 @@ function liveCard(p) {
   actions.append(focusButton(p), detail);
   top.append(title, actions);
   const stages = el("div", "card-section");
-  stages.append(stageBar(p, "card"));
+  stages.append(
+    slot(`stages:card:${p.project_id}`, "StageBar", { project: p }),
+  );
   const split = el("div", "card-split");
   split.append(
     slot(
       `term:card:${p.project_id}`,
-      "TerminalMirror",
-      {
-        projectId: p.project_id,
-        size: "compact",
-        interval: 2000,
-        agents: p.agents,
-      },
+      "TerminalThumb",
+      { project: p, size: "card", openable: true },
       "term-slot",
     ),
     slot(
@@ -507,26 +512,39 @@ function liveCard(p) {
       ),
       el("span", "note-body", openQuestions(p)[0].question),
     );
-    note.append(icon("question", "icon"), main);
+    const actions = el("div", "button-row");
+    actions.append(answerLink(p));
+    note.append(icon("question", "icon"), main, actions);
     q.append(note);
     card.append(q);
   }
   return card;
 }
 
+// The answer form lives in the project detail (Questions component).
+function answerLink(p) {
+  const a = el("a", "btn btn-sm btn-attn", "답변하기");
+  a.href = `#/p/${encodeURIComponent(p.project_id)}`;
+  return a;
+}
 function executeButton(p) {
   const b = button(
-    p.status === "paused" ? "작업 재개" : "제작 시작",
+    needsResume(p) ? "작업 재개" : "제작 시작",
     "btn btn-sm",
     "play",
     () => {
-      if (!executionReady()) return;
+      if (!executionReady() || b.dataset.blocked) return;
       window.homepage?.executeProject(p.project_id, p.run_id);
     },
   );
   b.dataset.executionControl = "true";
   b.dataset.focus = `execute:${p.project_id}`;
-  b.disabled = offline || !snapshot.execution_enabled;
+  // Resume refuses unanswered questions, so the button waits for the answers.
+  if (openQuestions(p).length) {
+    b.dataset.blocked = "true";
+    b.title = "질문에 먼저 답해 주세요";
+  }
+  b.disabled = offline || !snapshot.execution_enabled || !!b.dataset.blocked;
   return b;
 }
 function rowCard(p, sub, actions) {
@@ -643,11 +661,20 @@ function renderOverview() {
     const g = el("div", "group");
     g.append(
       ...paused.map((p) =>
-        rowCard(
-          p,
-          reasons[p.reason] ?? p.reason ?? "명시적인 재개가 필요합니다.",
-          [executeButton(p)],
-        ),
+        openQuestions(p).length
+          ? rowCard(p, "질문에 먼저 답해 주세요. 답한 뒤 작업을 재개합니다.", [
+              answerLink(p),
+              executeButton(p),
+            ])
+          : rowCard(
+              p,
+              p.status === "paused"
+                ? (reasons[p.reason] ??
+                    p.reason ??
+                    "명시적인 재개가 필요합니다.")
+                : "답변이 접수됐습니다. 작업 재개를 눌러야 이어집니다.",
+              [executeButton(p)],
+            ),
       ),
     );
     parts.push(
@@ -724,30 +751,43 @@ function renderDetail(p) {
     `작업 ${done(p)}/${p.tasks.length} · 접수 ${p.created_at ? `${day(p.created_at)} ${hm(p.created_at)}` : "—"}`,
     [previewLink(p), stateButton, focusButton(p)].filter(Boolean),
   );
-  const parts = [];
-  if (
-    ["queued", "paused"].includes(p.status) &&
-    !(p.status === "queued" && p.execution_requested)
-  ) {
+  // Summary first, then what needs the user (never collapsed), then the
+  // collapsible stages, activity and assets.
+  const parts = [slot(`summary:${p.project_id}`, "RunSummary", { project: p })];
+  const questions = openQuestions(p);
+  if (needsResume(p) || (p.status === "queued" && !p.execution_requested)) {
+    const resume = needsResume(p);
     const note = el("div", "note");
     const main = el("div", "note-main");
     main.append(
       el(
         "span",
         "note-title",
-        p.status === "paused"
+        resume
           ? "중단된 작업을 이어서 진행합니다"
           : "홈페이지 제작을 시작합니다",
       ),
       el(
         "span",
         "note-body",
-        snapshot.execution_enabled
-          ? `${p.status === "paused" && p.reason ? `${reasons[p.reason] ?? p.reason}\n` : ""}문서와 플러그인 준비를 확인한 뒤 시작·재개합니다. 최대 2개까지 동시에 진행합니다.`
-          : "관리자 설정에서 실행이 중지되어 있습니다.",
+        !snapshot.execution_enabled
+          ? "관리자 설정에서 실행이 중지되어 있습니다."
+          : resume && questions.length
+            ? `질문에 먼저 답해 주세요. 아래 답변을 보낸 뒤 작업을 재개할 수 있습니다.`
+            : `${resume && p.reason ? `${reasons[p.reason] ?? p.reason}\n` : ""}문서와 플러그인 준비를 확인한 뒤 시작·재개합니다. 최대 2개까지 동시에 진행합니다.`,
       ),
     );
-    note.append(icon("play", "icon"), main, executeButton(p));
+    const actions = el("div", "button-row");
+    if (resume && questions.length)
+      actions.append(
+        button("답변으로 이동", "btn btn-sm btn-attn", "question", () =>
+          document
+            .getElementById("answers")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+        ),
+      );
+    actions.append(executeButton(p));
+    note.append(icon("play", "icon"), main, actions);
     parts.push(note);
   } else if (p.reason || p.resume_required || p.unknown_operations.length) {
     const note = el("div", "note");
@@ -771,101 +811,17 @@ function renderDetail(p) {
     note.append(icon("alert", "icon"), main);
     parts.push(note);
   }
-  const questions = openQuestions(p);
-  if (questions.length) {
-    const note = el("div", "note");
-    note.dataset.tone = "warn";
-    const main = el("div", "note-main");
-    main.append(
-      el(
-        "span",
-        "note-title",
-        `사용자 확인이 필요합니다 · ${questions.length}건`,
-      ),
-    );
-    for (const q of questions) {
-      const item = el("div", "question");
-      const meta = el("span", "meta muted");
-      meta.append(`작업 ${q.task_id} · 요청 `, mono(shortId(q.request_id)));
-      item.append(el("span", "note-body", q.question), meta);
-      main.append(item);
-    }
-    main.append(
-      el(
-        "span",
-        "help",
-        "답변은 브로커 CLI의 answer --file 명령으로 전달합니다. 문서 변경이 필요하면 prd.md와 design.md를 갱신한 뒤 apply-inputs로 전달합니다.",
-      ),
-    );
-    note.append(icon("question", "icon"), main);
-    parts.push(note);
-  }
-  const tasks = el("div", "group task-list");
-  for (const t of p.tasks) {
-    const row = el("div", "group-row");
-    const main = el("div", "task-main");
-    const title = el("span", "ui", t.title);
-    const meta = el("span", "meta muted");
-    meta.append(
-      mono(t.task_id),
-      ` · ${roles[t.role] ?? t.role} · 실행 ${t.attempt}회${t.updated_at ? ` · 최근 보고 ${clock(t.updated_at)}` : ""}`,
-    );
-    main.append(title, meta);
-    if (t.result) main.append(el("span", "task-result", t.result));
-    const b = badge(
-      taskNames[t.status] ?? t.status,
-      {
-        completed: "ok",
-        failed: "danger",
-        waiting_input: "warn",
-        retrying: "warn",
-      }[t.status],
-    );
-    if (t.status === "running") b.prepend(dot("running"));
-    row.append(main, b);
-    tasks.append(row);
-  }
-  if (!p.tasks.length)
-    tasks.append(
-      groupBox([["계획", "PM이 계획을 등록하면 작업이 표시됩니다."]])
-        .firstChild,
-    );
-  const stages = el("div", "stack");
-  stages.append(stageBar(p, "detail"), tasks);
-  parts.push(section("진행 단계", `작업 ${done(p)}/${p.tasks.length}`, stages));
-  parts.push(
-    section(
-      "터미널",
-      "1초마다 갱신 · 읽기 전용",
-      slot(`term:detail:${p.project_id}`, "TerminalMirror", {
-        projectId: p.project_id,
-        size: "large",
-        interval: 1000,
-        agents: p.agents,
+  // Kept while the run has any question, so a receipt survives the snapshot
+  // that drops the answered question.
+  if (p.input_requests.length)
+    parts.push(
+      slot(`questions:${p.project_id}`, "Questions", {
+        project: p,
+        csrf: window.homepageBoot?.csrf ?? null,
       }),
-    ),
-  );
+    );
   parts.push(
-    section(
-      "결과 스크린샷",
-      "look.py 회차별",
-      slot(`gallery:${p.project_id}`, "ShotGallery", {
-        projectId: p.project_id,
-        runId: p.run_id,
-        revision: p.revision,
-      }),
-    ),
-  );
-  parts.push(
-    section(
-      "활동",
-      "events.jsonl · 이 run",
-      slot(`timeline:${p.project_id}`, "Timeline", {
-        projectId: p.project_id,
-        runId: p.run_id,
-        revision: p.revision,
-      }),
-    ),
+    slot(`sections:${p.project_id}`, "DetailSections", { project: p }),
   );
   $("view").replaceChildren(...parts);
 }
@@ -1066,7 +1022,7 @@ function acceptSnapshot(data, via) {
   lastSuccess = Date.now();
   offline = false;
   document.querySelectorAll("[data-execution-control]").forEach((b) => {
-    b.disabled = !snapshot.execution_enabled;
+    b.disabled = !snapshot.execution_enabled || !!b.dataset.blocked;
   });
   document.body.dataset.offline = "false";
   const c = $("connection");

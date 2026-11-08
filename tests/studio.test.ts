@@ -164,7 +164,7 @@ async function withClaudeRoot<T>(root: string, fn: () => Promise<T>) {
   }
 }
 
-test("S01 homepage-studio plugin ships the lean skill, vendored design skills, the design-taste excerpt and look.py without helpers", async () => {
+test("S01 homepage-studio plugin ships the lean skill, vendored design skills, the design-taste excerpt, look.py and only the SEO and security reviewer agents", async () => {
   const manifest = JSON.parse(
     await fs.readFile(
       path.join(repoPlugin, ".claude-plugin/plugin.json"),
@@ -190,8 +190,46 @@ test("S01 homepage-studio plugin ships the lean skill, vendored design skills, t
       new RegExp(`^---\\nname: ${skill}\\n`),
       `${skill} frontmatter name matches its folder`,
     );
+  const agents = (await fs.readdir(path.join(repoPlugin, "agents"))).sort();
+  assert.deepEqual(agents, ["homepage-security.md", "homepage-seo.md"]);
+  for (const file of agents) {
+    const body = await fs.readFile(
+      path.join(repoPlugin, "agents", file),
+      "utf8",
+    );
+    assert.match(
+      body,
+      new RegExp(`^---\\nname: ${file.replace(/\.md$/, "")}\\n`),
+      `${file} frontmatter name matches its file`,
+    );
+    assert.match(body, /\nmodel: inherit\n/);
+    // Reviewers never drive the broker, open panes or spawn agents.
+    assert.match(
+      body,
+      /브로커 명령\(report, preview-start, media-request 등\)을 보내지 않는다/,
+    );
+    assert.match(body, /다른 agent를 만들지 않는다/);
+  }
+  const security = await fs.readFile(
+    path.join(repoPlugin, "agents/homepage-security.md"),
+    "utf8",
+  );
+  assert.match(security, /\ntools: Read, Grep, Glob, Bash, Write\n/);
+  assert.match(security, /쓰는 파일은 `reports\/security\.md` 하나다/);
+  assert.match(
+    security,
+    /`npm audit`처럼 목록을 외부로 보내는 명령은 돌리지 않는다/,
+  );
+  const seo = await fs.readFile(
+    path.join(repoPlugin, "agents/homepage-seo.md"),
+    "utf8",
+  );
+  assert.match(seo, /사실은 입력 문서에서만 가져온다/);
+  assert.match(seo, /본문 마크업, 스타일, 스크립트[^\n]*고치지 않는다/);
   for (const gone of [
-    "agents",
+    "agents/homepage-copywriter.md",
+    "agents/homepage-designer.md",
+    "agents/homepage-developer.md",
     "skills/asset-kit",
     "skills/korean-copywriting",
     "skills/korean-typography",
@@ -280,6 +318,18 @@ test("S01 homepage-studio plugin ships the lean skill, vendored design skills, t
     lean,
     /## 2\. first-screen \(developer\)\n\n시작할 때 `homepage-studio:high-end-visual-design`과 `homepage-studio:frontend-design`을 로드한다/,
   );
+  // build-out calls both reviewers once, in parallel, and the final look waits for them.
+  assert.match(
+    lean,
+    /Agent 도구로 `homepage-studio:homepage-seo`와 `homepage-studio:homepage-security`를 한 메시지에서 함께 부른다\(각 1회\)/,
+  );
+  assert.match(lean, /높음·중간 항목은 final 전에 고친다/);
+  assert.match(
+    lean,
+    /두 agent가 모두 끝나고 그 결과를 반영한 뒤, 마지막에 `reports\/look\/final`/,
+  );
+  assert.match(lean, /SEO·보안 agent 외의 별도 QA·리뷰 agent/);
+  assert.doesNotMatch(lean, /메타와 SEO 기본을 넣는다/);
   const look = await fs.readFile(path.join(repoPlugin, lookScript), "utf8");
   assert.match(look, /^#!\/usr\/bin\/env python3\n/);
   assert.match(
@@ -454,7 +504,15 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
     assert.match(guide, /Do not hand design, copy or build work to subagents/);
     assert.match(
       guide,
-      /only to run independent image generations in parallel: you write every prompt and review every result/,
+      /Subagents are allowed for two jobs only: running independent image generations in parallel \(you write every prompt and review every result yourself\)/,
+    );
+    assert.match(
+      guide,
+      /homepage-studio:homepage-seo and homepage-studio:homepage-security, called once each in one message so they run in parallel/,
+    );
+    assert.match(
+      guide,
+      /fix the high and medium security items they return before the final look/,
     );
     assert.match(
       guide,
@@ -472,7 +530,11 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
       guide,
       /then one final run with final as <round>, as delivery evidence/,
     );
-    assert.match(guide, /No separate QA agent/);
+    assert.match(guide, /No other QA agent/);
+    assert.match(
+      guide,
+      /QA agents beyond the SEO and security reviewers below/,
+    );
     assert.match(guide, /Playwright is missing, do not install it/);
     assert.match(
       guide,

@@ -351,6 +351,123 @@ test("T26/T27 owned preview uses real HTTP and process identity, PID reuse refus
     await f.close();
   }
 });
+async function exited() {
+  const child = spawn(process.execPath, ["-e", ""], {
+    detached: true,
+    stdio: "ignore",
+  });
+  await new Promise((resolve) => child.on("exit", resolve));
+  return child.pid!;
+}
+function unknownPreview(r: any, pid: number) {
+  r.preview = {
+    status: "unknown",
+    run_id: r.run_id,
+    pid,
+    process_start: "Thu Oct  8 10:00:00 2026",
+    port: 1,
+    url: "http://127.0.0.1:1",
+    started_at: new Date().toISOString(),
+  };
+}
+const argv = [process.execPath, "server.mjs", "{port}"];
+test("T34 preview capacity re-checks unknown previews: exited ones free their slot, live ones return to ready", async () => {
+  const f = await setup();
+  const previews: any[] = [];
+  try {
+    for (const id of ["A", "B", "C", "D"]) await f.b.handle(f.submit(id));
+    const state = () => f.b.store.state.projects;
+    for (const id of ["A", "B"]) {
+      unknownPreview(current(state()[id]), await exited());
+      await f.b.save(state()[id]);
+    }
+    // C still serves its preview, but a restart marked it unknown.
+    const pc = state().C,
+      rc = current(pc);
+    await fs.copyFile(
+      "tests/fixtures/preview.mjs",
+      path.join(pc.directory, "app/server.mjs"),
+    );
+    await startPreview(pc, rc, argv, () => f.b.save(pc));
+    previews.push(rc.preview);
+    rc.preview.status = "unknown";
+    rc.status = "review_pending";
+    await f.b.save(pc);
+    const pd = state().D;
+    current(pd).status = "running";
+    await f.b.save(pd);
+    await fs.copyFile(
+      "tests/fixtures/preview.mjs",
+      path.join(pd.directory, "app/server.mjs"),
+    );
+    const result = await f.b.handle(cmd("preview-start", pd, { argv }));
+    previews.push(current(state().D).preview);
+    assert.equal(result.status, "ready");
+    const saved = f.b.store.published.projects;
+    assert.equal(current(saved.A).preview.status, "stopped");
+    assert.equal(current(saved.B).preview.status, "stopped");
+    assert.equal(current(saved.C).preview.status, "ready");
+    assert.equal(current(saved.D).preview.status, "ready");
+  } finally {
+    for (const preview of previews)
+      try {
+        await stopPreview(preview);
+      } catch {}
+    await f.close();
+  }
+});
+test("T35 a reused PID or leftover descendants keep an unknown preview counted and unsignalled", async () => {
+  const f = await setup();
+  const groups: number[] = [];
+  try {
+    for (const id of ["A", "B", "C"]) await f.b.handle(f.submit(id));
+    const state = () => f.b.store.state.projects;
+    // A: the recorded PID now belongs to a different process.
+    const other = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    groups.push(other.pid!);
+    unknownPreview(current(state().A), other.pid!);
+    await f.b.save(state().A);
+    // B: the group leader exited but a child is still running in its group.
+    const leader = spawn(
+      process.execPath,
+      [
+        "-e",
+        "require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'}).unref()",
+      ],
+      { detached: true, stdio: "ignore" },
+    );
+    groups.push(leader.pid!);
+    await new Promise((resolve) => leader.on("exit", resolve));
+    unknownPreview(current(state().B), leader.pid!);
+    await f.b.save(state().B);
+    const pc = state().C;
+    current(pc).status = "running";
+    await f.b.save(pc);
+    await fs.copyFile(
+      "tests/fixtures/preview.mjs",
+      path.join(pc.directory, "app/server.mjs"),
+    );
+    await assert.rejects(
+      () => f.b.handle(cmd("preview-start", pc, { argv })),
+      (e: any) => e.code === "preview_capacity",
+    );
+    assert.equal(current(state().A).preview.status, "unknown");
+    assert.equal(current(state().B).preview.status, "unknown");
+    assert.equal(current(state().C).preview.status, "stopped");
+    process.kill(other.pid!, 0);
+    const { stdout } = await exec("ps", ["-axo", "pgid="]);
+    assert.ok(stdout.split("\n").some((g) => g.trim() === String(leader.pid)));
+  } finally {
+    for (const g of groups)
+      try {
+        process.kill(-g, "SIGKILL");
+      } catch {}
+    await f.close();
+  }
+});
 test("T29 feedback creates exactly one run and keeps old snapshots", async () => {
   const f = await setup();
   try {

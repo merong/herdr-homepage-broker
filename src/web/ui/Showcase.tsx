@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { ArrowRight, ExternalLink, Maximize2, X } from "lucide-react";
+import { ArrowRight, ExternalLink, Maximize2, Sparkles, X } from "lucide-react";
 import { roundName, shotUrl } from "./data";
+import { Character, Spark } from "./Cast";
 
 interface ShotRef {
   path: string;
@@ -136,6 +137,8 @@ function useViewer() {
   return { open, view };
 }
 
+// Each case sits in a small browser frame, as in the hero; the phone capture
+// stays one click away in the viewer.
 function Case(props: {
   p: CaseItem;
   index: number;
@@ -144,6 +147,7 @@ function Case(props: {
   const { p } = props;
   const desktop = p.shots.desktop ?? p.shots.desktop_full;
   const mobile = p.shots.mobile ?? p.shots.mobile_full;
+  const cover = desktop ?? mobile;
   return (
     <article
       className="lp-case"
@@ -155,28 +159,30 @@ function Case(props: {
         onClick={() => props.open(p)}
         aria-label={`${p.name} 전체 화면 크게 보기`}
       >
-        {desktop ? (
-          <span className="lp-case-desk">
-            <img
-              src={shotUrl(p.project_id, desktop)}
-              alt=""
-              loading="lazy"
-              decoding="async"
-            />
+        <span className="lp-case-tag">
+          {p.delivered ? "final 납품 화면" : `${roundName(p.round)} 화면`}
+          <Sparkles className="icon icon-xs" aria-hidden />
+        </span>
+        <span className="lp-case-frame">
+          <span className="lp-case-bar" aria-hidden>
+            <span className="lp-mock-dots">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span className="lp-case-url mono">{p.project_id}</span>
           </span>
-        ) : (
-          <span className="lp-case-desk" />
-        )}
-        {mobile && (
-          <span className="lp-case-phone">
-            <img
-              src={shotUrl(p.project_id, mobile)}
-              alt=""
-              loading="lazy"
-              decoding="async"
-            />
+          <span className="lp-case-desk" data-phone={desktop ? undefined : ""}>
+            {cover && (
+              <img
+                src={shotUrl(p.project_id, cover)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
+            )}
           </span>
-        )}
+        </span>
         <span className="lp-case-zoom" aria-hidden>
           <Maximize2 className="icon icon-sm" />
         </span>
@@ -191,7 +197,6 @@ function Case(props: {
         <p className="lp-case-meta">
           {when(p)} · look {p.rounds}회
         </p>
-        <p className="lp-case-id mono">{p.project_id}</p>
         <div className="lp-case-links">
           <a className="lp-text-link" href={dashboardLink(p.project_id)}>
             대시보드에서 보기{" "}
@@ -235,7 +240,7 @@ export function Showcase(props: {
       </div>
     ) : (
       <div className="lp-cases" aria-busy="true">
-        {[0, 1, 2].map((i) => (
+        {[0, 1, 2, 3].map((i) => (
           <div key={i} className="lp-case lp-case-skeleton" />
         ))}
       </div>
@@ -243,6 +248,10 @@ export function Showcase(props: {
   else if (!data.projects.length)
     body = (
       <div className="lp-empty">
+        <span className="lp-empty-cast" aria-hidden>
+          <Character id="pm" />
+          <Character id="image" delay={0.4} />
+        </span>
         <p className="lp-empty-title">아직 화면이 남은 프로젝트가 없습니다</p>
         <p>
           제작을 요청하면 PM이 look.py로 찍은 첫 화면부터 이곳에 모입니다. final
@@ -271,21 +280,28 @@ export function Showcase(props: {
       aria-labelledby="lp-showcase-title"
     >
       <div className="lp-wrap">
-        <div className="lp-head">
-          <p className="lp-eyebrow">제작 사례</p>
-          <h2 id="lp-showcase-title" className="lp-h2">
-            브로커가 만든 홈페이지
-          </h2>
-          <p className="lp-lead">
-            프로젝트 폴더에 남은 look.py 스크린샷을 그대로 읽어 옵니다. final
-            회차가 있으면 납품 화면을, 아직 없으면 가장 최근 회차를 보여 줍니다.
-          </p>
-          {data && data.projects.length > 0 && (
-            <p className="lp-count num">
-              납품 {delivered}
-              {making > 0 && ` · 제작 중 ${making}`}
+        <div className="lp-head lp-head-split">
+          <div>
+            <h2 id="lp-showcase-title" className="lp-h2">
+              브로커가 만든 홈페이지를 만나보세요
+              <Spark className="lp-head-spark" />
+            </h2>
+            <p className="lp-head-sub">
+              프로젝트 폴더의 look.py 스크린샷을 그대로 읽어 옵니다. final
+              회차가 있으면 납품 화면을, 없으면 가장 최근 회차를 보여 줍니다.
+              {data && data.projects.length > 0 && (
+                <span className="lp-count num">
+                  {" "}
+                  납품 {delivered}
+                  {making > 0 && ` · 제작 중 ${making}`}
+                </span>
+              )}
             </p>
-          )}
+          </div>
+          <a className="lp-btn lp-btn-sm lp-head-link" href="/dashboard">
+            대시보드에서 모두 보기{" "}
+            <ArrowRight className="icon icon-sm" aria-hidden />
+          </a>
         </div>
         {body}
       </div>

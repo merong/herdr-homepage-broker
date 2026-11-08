@@ -1,11 +1,13 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   assetUrl,
-  clock,
+  bytes,
   hm,
   roundName,
   shotUrl,
   useShots,
+  when,
   type Round,
   type Shot,
   type Shots,
@@ -21,63 +23,32 @@ const stageNames: Record<string, string> = {
   "build-out": "build-out",
   final: "납품 증거",
 };
+const viewportNames: Record<string, string> = {
+  desktop: "데스크톱",
+  mobile: "모바일",
+};
 const latest = (s: Shots | null) => s?.rounds.at(-1);
 const pick = (r: Round | undefined, viewport: string, full = false) =>
   r?.files.find((f) => f.viewport === viewport && f.full === full);
 
-// Thumbnails always use the viewport-sized PNG; the full page opens on click.
-function Thumb(props: {
-  id: string;
-  shot: Shot;
-  caption?: string;
-  onOpen?: (s: Shot) => void;
-}) {
-  const { shot } = props;
-  return (
-    <div className="shot">
-      <button
-        type="button"
-        className="shot-img"
-        data-device={shot.viewport}
-        onClick={() => props.onOpen?.(shot)}
-        aria-label={`${shot.viewport} 스크린샷 크게 보기`}
-      >
-        <img
-          src={shotUrl(props.id, shot)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-        />
-      </button>
-      {props.caption && (
-        <span className="shot-cap">
-          <span>{props.caption}</span>
-          <span>{hm(shot.mtime)}</span>
-        </span>
-      )}
-    </div>
-  );
-}
-
-function useLightbox(id: string, round?: (s: Shot) => Round | undefined) {
+// Rendered into <body>: the shell re-inserts slot containers on every
+// snapshot, and a modal <dialog> that leaves the document loses its top layer.
+function Lightbox(props: { src: string; title: string; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [src, setSrc] = useState<string | null>(null);
-  const open = (s: Shot) => {
-    const full = round?.(s)?.files.find(
-      (f) => f.viewport === s.viewport && f.full,
-    );
-    setSrc(shotUrl(id, full ?? s));
-    ref.current?.showModal();
-  };
-  const view = (
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+  return (
     <dialog
       ref={ref}
       className="lightbox"
-      aria-label="스크린샷"
+      aria-label={props.title}
+      onClose={props.onClose}
       onClick={() => ref.current?.close()}
     >
       <div className="dialog-head">
-        <span className="heading">스크린샷</span>
+        <span className="heading">{props.title}</span>
         <button
           className="btn btn-sm"
           type="button"
@@ -86,10 +57,218 @@ function useLightbox(id: string, round?: (s: Shot) => Round | undefined) {
           닫기
         </button>
       </div>
-      <div className="dialog-body">{src && <img src={src} alt="" />}</div>
+      <div className="dialog-body">
+        <img src={props.src} alt={props.title} />
+      </div>
     </dialog>
   );
-  return { open, view };
+}
+function useLightbox() {
+  const [shown, setShown] = useState<{ src: string; title: string } | null>(
+    null,
+  );
+  const view =
+    shown &&
+    createPortal(
+      <Lightbox {...shown} onClose={() => setShown(null)} />,
+      document.body,
+    );
+  return {
+    open: (src: string, title: string) => setShown({ src, title }),
+    view,
+  };
+}
+
+// One entry per screen: a look round's viewport PNG (its full-page PNG rides
+// along and opens on click) or a generated image from assets/.
+interface Item {
+  key: string;
+  name: string;
+  tag: string;
+  kind: string;
+  viewport?: string;
+  src: string;
+  full?: string;
+  fullSize?: number;
+  size?: number;
+  mtime: string;
+}
+function shotItem(id: string, r: Round, s: Shot): Item {
+  const full = pick(r, s.viewport, true);
+  return {
+    key: s.path,
+    name: s.name,
+    tag: `${r.round === "final" ? "최종" : `${r.round}회`} ${s.viewport === "desktop" ? "PC" : "M"}`,
+    kind: `look ${roundName(r.round)} · ${stageNames[r.stage] ?? r.stage} · ${viewportNames[s.viewport]}`,
+    viewport: s.viewport,
+    src: shotUrl(id, s),
+    full: full && shotUrl(id, full),
+    fullSize: full?.size,
+    size: s.size,
+    mtime: s.mtime,
+  };
+}
+function collect(id: string, data: Shots) {
+  const rounds = [...data.rounds].reverse();
+  const groups = rounds.map((r) => ({
+    key: r.round,
+    title: roundName(r.round),
+    badge: stageNames[r.stage] ?? r.stage,
+    at: r.at,
+    verdict: r.verdict,
+    items: r.files.filter((f) => !f.full).map((f) => shotItem(id, r, f)),
+  }));
+  const images: Item[] = [...data.assets].reverse().map((a) => ({
+    key: a.path,
+    name: a.name,
+    tag: "이미지",
+    kind: "생성 이미지 · assets/",
+    src: assetUrl(id, a),
+    size: a.size,
+    mtime: a.mtime,
+  }));
+  if (images.length)
+    groups.push({
+      key: "assets",
+      title: "생성 이미지",
+      badge: "assets/",
+      at: data.assets.at(-1)!.mtime,
+      verdict: null,
+      items: images,
+    });
+  // The grid leads with the newest final (else the newest round), then the
+  // generated images, then the older rounds.
+  const [head, ...older] = groups.filter((g) => g.key !== "assets");
+  const ordered = [
+    ...(head?.items ?? []),
+    ...images,
+    ...older.flatMap((g) => g.items),
+  ];
+  return { groups, ordered };
+}
+
+export function assetSummary(data: Shots | null) {
+  if (!data) return "불러오는 중";
+  const shots = data.rounds.reduce(
+    (n, r) => n + r.files.filter((f) => !f.full).length,
+    0,
+  );
+  if (!shots && !data.assets.length) return "아직 없음";
+  return [
+    shots ? `스크린샷 ${shots}장` : "",
+    data.assets.length ? `생성 이미지 ${data.assets.length}장` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+const GRID = 8;
+
+// Basic view: a thumbnail grid beside the activity list. Past GRID items the
+// last tile becomes "+n", which opens the asset section like "전체 보기".
+export function AssetGrid(props: Props & { onMore: () => void }) {
+  const { data, error } = useShots(props.projectId, props.revision);
+  const box = useLightbox();
+  if (!data)
+    return (
+      <p className="help asset-pad">
+        {error
+          ? `에셋 목록을 불러오지 못했습니다 (${error}).`
+          : "에셋을 불러오고 있습니다."}
+      </p>
+    );
+  const { ordered } = collect(props.projectId, data);
+  if (!ordered.length)
+    return (
+      <p className="asset-empty">결과 스크린샷이 생기면 여기에 모입니다</p>
+    );
+  const shown = ordered.length > GRID ? ordered.slice(0, GRID - 1) : ordered;
+  const rest = ordered.length - shown.length;
+  return (
+    <div className="asset-pad stack">
+      <div className="asset-grid">
+        {shown.map((it) => (
+          <button
+            type="button"
+            key={it.key}
+            className="asset-tile"
+            onClick={() =>
+              box.open(it.full ?? it.src, `${it.kind} · ${it.name}`)
+            }
+            aria-label={`${it.kind} 크게 보기`}
+            title={it.kind}
+          >
+            <img src={it.src} alt="" loading="lazy" decoding="async" />
+            <span className="asset-tag">{it.tag}</span>
+          </button>
+        ))}
+        {rest > 0 && (
+          <button
+            type="button"
+            className="asset-tile asset-more"
+            onClick={props.onMore}
+            aria-label={`에셋 ${rest}개 더 보기`}
+          >
+            +{rest}
+          </button>
+        )}
+      </div>
+      <div>
+        <button type="button" className="btn-link" onClick={props.onMore}>
+          전체 보기
+        </button>
+      </div>
+      {box.view}
+    </div>
+  );
+}
+
+function AssetRow(props: {
+  item: Item;
+  onOpen: (src: string, title: string) => void;
+}) {
+  const it = props.item;
+  const [res, setRes] = useState<string | null>(null);
+  return (
+    <li className="asset-row">
+      <button
+        type="button"
+        className="asset-row-thumb"
+        data-device={it.viewport}
+        onClick={() => props.onOpen(it.src, `${it.kind} · ${it.name}`)}
+        aria-label={`${it.kind} 크게 보기`}
+      >
+        <img
+          src={it.src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onLoad={(e) =>
+            setRes(
+              `${e.currentTarget.naturalWidth}×${e.currentTarget.naturalHeight}`,
+            )
+          }
+        />
+      </button>
+      <span className="asset-row-main">
+        <span className="asset-row-name mono">{it.name}</span>
+        <span className="asset-row-kind">{it.kind}</span>
+      </span>
+      <span className="asset-row-meta num">
+        <span>{when(it.mtime)}</span>
+        <span>{[res, bytes(it.size)].filter(Boolean).join(" · ") || "—"}</span>
+        {it.full && (
+          <button
+            type="button"
+            className="btn-link"
+            onClick={() => props.onOpen(it.full!, `${it.kind} · 전체 페이지`)}
+          >
+            전체 페이지{it.fullSize ? ` · ${bytes(it.fullSize)}` : ""}
+          </button>
+        )}
+      </span>
+    </li>
+  );
 }
 
 // verdict.md is short markdown: a "# look N" heading and "- " bullets. The
@@ -117,81 +296,69 @@ function Verdict({ text }: { text: string }) {
   );
 }
 
-export function ShotGallery(props: Props) {
+// Detailed view: every screen listed by round, final first, then the
+// generated images, with time, file size and the decoded resolution.
+export function AssetList(props: Props) {
   const { data, error } = useShots(props.projectId, props.revision);
-  const roundOf = (s: Shot) => data?.rounds.find((r) => r.files.includes(s));
-  const box = useLightbox(props.projectId, roundOf);
+  const box = useLightbox();
   if (!data)
     return (
-      <p className="help">
+      <p className="help asset-pad">
         {error
-          ? `스크린샷 목록을 불러오지 못했습니다 (${error}).`
-          : "스크린샷을 불러오고 있습니다."}
+          ? `에셋 목록을 불러오지 못했습니다 (${error}).`
+          : "에셋을 불러오고 있습니다."}
+      </p>
+    );
+  const { groups } = collect(props.projectId, data);
+  if (!groups.length)
+    return (
+      <p className="asset-empty">
+        결과 스크린샷이 생기면 여기에 모입니다. PM이 look.py 회차를 마치면
+        reports/look/&lt;회차&gt;/ 화면이 쌓입니다.
       </p>
     );
   return (
-    <div className="stack">
-      {data.rounds.length ? (
-        [...data.rounds].reverse().map((r) => (
-          <div className="shot-round" key={r.round}>
-            <div className="shot-round-head">
-              <b>{roundName(r.round)}</b>
-              <span className="badge">{stageNames[r.stage] ?? r.stage}</span>
-              <span className="muted num">{clock(r.at)}</span>
-            </div>
-            <div className="shots">
-              {r.files
-                .filter((f) => !f.full)
-                .map((f) => (
-                  <Thumb
-                    key={f.path}
-                    id={props.projectId}
-                    shot={f}
-                    caption={f.viewport}
-                    onOpen={box.open}
-                  />
-                ))}
-            </div>
-            {r.verdict && <Verdict text={r.verdict} />}
+    <div className="asset-list">
+      {groups.map((g) => (
+        <div className="asset-group" key={g.key}>
+          <div className="asset-group-head">
+            <b>{g.title}</b>
+            <span className="badge">{g.badge}</span>
+            <span className="muted num">{when(g.at)}</span>
+            <span className="grow" />
+            <span className="muted num">{g.items.length}장</span>
           </div>
-        ))
-      ) : (
-        <p className="shot-empty">
-          아직 스크린샷이 없습니다. PM이 look.py 회차를 마치면
-          reports/look/&lt;회차&gt;/ 화면이 여기에 쌓입니다.
-        </p>
-      )}
-      {data.assets.length > 0 && (
-        <div>
-          <div className="section-head">
-            <span>생성 이미지 · {data.assets.length}장</span>
-            <span>assets/</span>
-          </div>
-          <div className="shots">
-            {data.assets.map((a) => (
-              <div className="shot" key={a.path}>
-                <a
-                  className="shot-img"
-                  href={assetUrl(props.projectId, a)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <img
-                    src={assetUrl(props.projectId, a)}
-                    alt={a.name}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </a>
-                <span className="shot-cap">
-                  <span className="mono">{a.name}</span>
-                </span>
-              </div>
+          <ul className="asset-rows">
+            {g.items.map((it) => (
+              <AssetRow key={it.key} item={it} onOpen={box.open} />
             ))}
-          </div>
+          </ul>
+          {g.verdict && <Verdict text={g.verdict} />}
         </div>
-      )}
+      ))}
       {box.view}
+    </div>
+  );
+}
+
+function Thumb(props: { id: string; shot: Shot; onOpen: (s: Shot) => void }) {
+  const { shot } = props;
+  return (
+    <div className="shot">
+      <button
+        type="button"
+        className="shot-img"
+        data-device={shot.viewport}
+        onClick={() => props.onOpen(shot)}
+        aria-label={`${viewportNames[shot.viewport]} 스크린샷 크게 보기`}
+      >
+        <img
+          src={shotUrl(props.id, shot)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+        />
+      </button>
     </div>
   );
 }
@@ -200,8 +367,12 @@ export function ShotGallery(props: Props) {
 export function ShotStrip(props: Props) {
   const { data } = useShots(props.projectId, props.revision);
   const r = latest(data);
-  const roundOf = () => r;
-  const box = useLightbox(props.projectId, roundOf);
+  const box = useLightbox();
+  const open = (s: Shot) =>
+    box.open(
+      shotUrl(props.projectId, pick(r, s.viewport, true) ?? s),
+      `${roundName(r!.round)} · ${viewportNames[s.viewport]}`,
+    );
   const desktop = pick(r, "desktop"),
     mobile = pick(r, "mobile");
   if (!r || (!desktop && !mobile))
@@ -221,12 +392,8 @@ export function ShotStrip(props: Props) {
         <span className="num">{hm(r.at)}</span>
       </div>
       <div className="shots">
-        {desktop && (
-          <Thumb id={props.projectId} shot={desktop} onOpen={box.open} />
-        )}
-        {mobile && (
-          <Thumb id={props.projectId} shot={mobile} onOpen={box.open} />
-        )}
+        {desktop && <Thumb id={props.projectId} shot={desktop} onOpen={open} />}
+        {mobile && <Thumb id={props.projectId} shot={mobile} onOpen={open} />}
       </div>
       {box.view}
     </div>
@@ -260,8 +427,14 @@ export function ShotCover(props: Props) {
   );
 }
 
-export function ListThumb(props: Props) {
-  const { data } = useShots(props.projectId, props.revision);
+// Sidebar thumbnail for projects that are not running: the latest result
+// screen (final when present). Idle projects refresh on a new revision only.
+export function ListThumb(props: Props & { poll?: boolean }) {
+  const { data } = useShots(
+    props.projectId,
+    props.revision,
+    props.poll === false ? 0 : 20000,
+  );
   const shot = pick(latest(data), "desktop");
   return shot ? (
     <img

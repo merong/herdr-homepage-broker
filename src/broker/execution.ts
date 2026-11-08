@@ -12,10 +12,12 @@ export async function executionReadiness(
   herdr: Herdr,
   state: { storage_fault: boolean; projection_pending: boolean; slots: number },
 ) {
+  // Answering a paused run's question without a slot moves it to queued, but
+  // resume_required stays set until an explicit resume.
   const action =
     r.status === "queued" && !r.resume_required
       ? "start"
-      : r.status === "paused"
+      : r.status === "paused" || r.status === "queued"
         ? "resume"
         : null;
   // Lifecycle guards remain enforced, separately from setup checks.

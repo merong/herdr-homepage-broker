@@ -40,11 +40,11 @@ function runtimeText(a?: Agent) {
   return s === "busy" ? "working" : s === "unknown" ? "알 수 없음" : s;
 }
 
-// Read-only mirror of a Herdr pane. Polls only while the page is visible; the
-// server coalesces reads per pane, so several mirrors cost one CLI call.
+// Read-only mirror of a Herdr pane, opened from a terminal thumbnail. Polls
+// only while mounted and the page is visible; the server coalesces reads per
+// pane, so the mirror and the thumbnails cost one CLI call.
 export function TerminalMirror(props: {
   projectId: string;
-  size: "compact" | "large";
   interval: number;
   agents: Agent[];
 }) {
@@ -80,7 +80,7 @@ export function TerminalMirror(props: {
     ? `${roleNames[agent.role] ?? agent.role} · ${agent.pane_id}`
     : "pane 없음";
   return (
-    <div className="term" data-size={props.size}>
+    <div className="term">
       <div className="term-head">
         <span className="pane">{label}</span>
         <span className="dot" data-state={runtimeDot(agent)} />
@@ -106,7 +106,7 @@ export function TerminalMirror(props: {
       </div>
       {data?.available ? (
         <pre
-          className="term-body"
+          className="term-body ansi"
           ref={body}
           onScroll={onScroll}
           tabIndex={0}

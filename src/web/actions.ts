@@ -6,19 +6,22 @@ import { brokerSocket } from "../config.js";
 // a shell command or a Herdr prompt. Actual model dispatch stays in the broker.
 export function projectCli(
   c: Config,
-  action: "init" | "submit" | "readiness" | "execute",
+  action: "init" | "submit" | "readiness" | "execute" | "answer",
   input: any,
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     const args = [
       fileURLToPath(new URL("../cli.js", import.meta.url)),
-      ...(action === "execute" ? ["execute"] : ["project", action]),
+      ...(["execute", "answer"].includes(action)
+        ? [action]
+        : ["project", action]),
       "--socket",
       brokerSocket(c),
       "--projects-root",
       c.projectsRoot!,
     ];
-    if (["init", "execute"].includes(action)) args.push("--file", "-");
+    if (["init", "execute", "answer"].includes(action))
+      args.push("--file", "-");
     else args.push("--project", input.project_id);
     const child = spawn(process.execPath, args, {
       env: {
@@ -85,7 +88,9 @@ export function projectCli(
       }
     });
     child.stdin.end(
-      ["init", "execute"].includes(action) ? JSON.stringify(input) : undefined,
+      ["init", "execute", "answer"].includes(action)
+        ? JSON.stringify(input)
+        : undefined,
     );
   });
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   clock,
   getJson,
+  hm,
   projectApi,
   statusNames,
   taskNames,
@@ -15,7 +16,7 @@ const runtime: Record<string, string> = {
   unknown: "알 수 없음",
 };
 
-function describe(e: BrokerEvent): {
+export function describe(e: BrokerEvent): {
   tone?: string;
   title: string;
   detail?: string;
@@ -90,11 +91,13 @@ function describe(e: BrokerEvent): {
 }
 
 // Newest first. The first page follows the project revision; older pages are
-// appended with "더 보기" and stay until the run changes.
+// appended with "더 보기" and stay until the run changes. `limit` shows only
+// the newest few titles (the collapsed activity section).
 export function Timeline(props: {
   projectId: string;
   runId: string;
   revision: number;
+  limit?: number;
 }) {
   const { data, error } = useEvents(props.projectId, props.revision);
   const [older, setOlder] = useState<BrokerEvent[]>([]);
@@ -137,17 +140,20 @@ export function Timeline(props: {
       </p>
     );
   const today = new Date().toDateString();
+  const shown = props.limit ? events.slice(0, props.limit) : events;
   return (
     <div className="stack">
-      <div className="group timeline">
-        {events.map((e) => {
+      <div className="group timeline" data-compact={!!props.limit || undefined}>
+        {shown.map((e) => {
           const d = describe(e);
           const date = new Date(e.at);
           return (
             <div className="tl-item" key={e.seq}>
               <span className="tl-time" title={date.toLocaleString("ko-KR")}>
                 {date.toDateString() === today
-                  ? clock(e.at)
+                  ? props.limit
+                    ? hm(e.at)
+                    : clock(e.at)
                   : date.toLocaleDateString("ko-KR", {
                       month: "numeric",
                       day: "numeric",
@@ -156,13 +162,15 @@ export function Timeline(props: {
               <span className="dot" data-state={d.tone} />
               <span className="tl-text">
                 <span>{d.title}</span>
-                {d.detail && <span className="tl-detail">{d.detail}</span>}
+                {d.detail && !props.limit && (
+                  <span className="tl-detail">{d.detail}</span>
+                )}
               </span>
             </div>
           );
         })}
       </div>
-      {cursor != null && (
+      {cursor != null && !props.limit && (
         <div>
           <button className="btn btn-sm" onClick={more} disabled={loading}>
             {loading ? "불러오는 중…" : "더 보기"}

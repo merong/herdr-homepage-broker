@@ -88,6 +88,14 @@ export const hm = (iso: string) =>
     hourCycle: "h23",
   });
 
+// "14:03" today, "10월 8일 14:03" on other days.
+export function when(iso: string) {
+  const d = new Date(iso);
+  return d.toDateString() === new Date().toDateString()
+    ? hm(iso)
+    : `${d.toLocaleDateString("ko-KR", { month: "long", day: "numeric" })} ${hm(iso)}`;
+}
+
 export function minutes(ms: number) {
   const m = Math.max(0, Math.floor(ms / 60000));
   if (m < 60) return `${m}분`;
@@ -130,6 +138,7 @@ export interface Shot {
   path: string;
   viewport: "desktop" | "mobile";
   full: boolean;
+  size?: number;
   mtime: string;
 }
 export interface Round {
@@ -142,6 +151,7 @@ export interface Round {
 export interface Asset {
   name: string;
   path: string;
+  size?: number;
   mtime: string;
 }
 export interface Shots {
@@ -157,12 +167,19 @@ export const roundName = (r: string) => (r === "final" ? "최종" : `${r}회차`
 
 // Shots change when look.py finishes a round, which is usually followed by a
 // progress report (a new revision); the interval catches rounds without one.
-export function useShots(id: string, revision: unknown) {
+// Idle projects pass interval 0 and refresh on a new revision only.
+export function useShots(id: string, revision: unknown, interval = 20000) {
   return useJson<Shots>(projectApi(id, "shots"), {
     version: revision,
-    interval: 20000,
+    interval,
     maxAge: 3000,
   });
+}
+
+export function bytes(n: number | undefined) {
+  if (n === undefined) return null;
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
 }
 
 export function useEvents(id: string, revision: unknown) {

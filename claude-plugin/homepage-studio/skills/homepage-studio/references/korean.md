@@ -1,4 +1,4 @@
-# 한국어 카피·서체·SEO
+# 한국어 카피·서체
 
 ## 카피
 
@@ -47,12 +47,6 @@ h1 { font-size: var(--fs-h1); } h2 { font-size: var(--fs-xl); }
 - 휴대폰 본문은 16~17px로 한다. 제목은 390px에서 3줄을 넘지 않게 한다.
 - 영문 워드마크나 라틴 서체를 섞을 때는 `unicode-range`로 한글에 적용되지 않게 한다.
 
-## SEO 기본
+## SEO
 
-- `<html lang="ko">`
-- `<title>`: "회사명 | 핵심 제공물 한 구" 형식. em-dash(—)는 쓰지 않는다
-- `meta description`: 80~120자. 입력 속 사실(지역, 제공물, 가격대)을 넣는다.
-- Open Graph: title, description, image. image는 히어로로 1200×630 사본을 만든다. 배포 주소가 없으므로 canonical은 생략한다.
-- 제목 구조: `h1`은 하나, 섹션마다 `h2`를 쓴다.
-- JSON-LD: 입력에 있는 사실만 넣는다(이름, 서비스, 지역, 가격). 주소나 전화가 없으면 해당 필드를 비우지 말고 아예 뺀다. 가상 업체 데모이면 JSON-LD 자체를 생략해도 된다.
-- 파비콘: 워드마크의 첫 글자나 기호로 SVG 하나를 만든다.
+head 메타, robots.txt, 파비콘은 build-out에서 `homepage-studio:homepage-seo` agent가 넣는다. PM은 본문의 제목 구조(`h1` 하나, 섹션마다 `h2`)와 이미지 `alt`만 챙긴다.

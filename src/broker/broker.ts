@@ -40,6 +40,7 @@ import { rolePrompt, claudeArgs, assignment } from "../agents/prompts.js";
 import { studioPlugin } from "../agents/studio.js";
 import { Mcp, field } from "../media/mcp.js";
 import {
+  recheckPreview,
   startPreview,
   stopPreview,
   verifyPreview,
@@ -803,6 +804,17 @@ export class Broker {
     await this.save(p);
   }
   async previewCapacity(run: Run) {
+    // A restart turns every ready preview into unknown, which counts as used
+    // but is never evictable. Re-check those first so neither a dead preview
+    // nor a live one left over from before the restart holds a slot for good.
+    for (const p of Object.values(this.store.state.projects)) {
+      const r = current(p);
+      if (r.preview.status !== "unknown") continue;
+      const status = await recheckPreview(r.preview);
+      if (status === "unknown") continue;
+      r.preview.status = status;
+      await this.save(p);
+    }
     const busy = Object.values(this.store.state.projects)
       .map((p) => ({ p, r: current(p) }))
       .filter((x) =>

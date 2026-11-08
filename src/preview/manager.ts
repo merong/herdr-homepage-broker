@@ -61,6 +61,22 @@ export async function verifyPreview(preview: Preview) {
     return false;
   }
 }
+// A restart or a failed check leaves a preview `unknown`. Look again without
+// sending any signal: serving again → ready; leader gone with no process left
+// in its group → stopped (stopPreview's rule); anything else (reused PID,
+// leftover descendants, alive but not answering) stays unknown.
+export async function recheckPreview(
+  preview: Preview,
+): Promise<"ready" | "stopped" | "unknown"> {
+  try {
+    if (await verifyPreview(preview)) return "ready";
+    if (!preview.pid) return "stopped";
+    if (await processStart(preview.pid)) return "unknown";
+    return (await groupMembers(preview.pid)).length ? "unknown" : "stopped";
+  } catch {
+    return "unknown";
+  }
+}
 export async function stopPreview(preview: Preview) {
   if (preview.status === "stopped") return;
   if (!preview.pid) {

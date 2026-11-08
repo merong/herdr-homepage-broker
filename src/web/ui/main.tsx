@@ -1,29 +1,32 @@
 import { createElement, type ComponentType } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { TerminalMirror } from "./TerminalMirror";
+import { TerminalThumb } from "./TerminalThumb";
 import { StageBar } from "./StageBar";
-import { Timeline } from "./Timeline";
-import { ListThumb, ShotCover, ShotGallery, ShotStrip } from "./Shots";
+import { ListThumb, ShotCover, ShotStrip } from "./Shots";
+import { DetailSections, RunSummary } from "./Detail";
 import { Structure } from "./Structure";
 import { Landing } from "./Landing";
 import { Concept } from "./Concept";
+import { Questions } from "./Questions";
 
 const components: Record<string, ComponentType<any>> = {
-  TerminalMirror,
+  TerminalThumb,
   StageBar,
-  Timeline,
-  ShotGallery,
+  RunSummary,
+  DetailSections,
   ShotStrip,
   ShotCover,
   ListThumb,
   Structure,
   Landing,
   Concept,
+  Questions,
 };
 
 // The plain-JS shell rebuilds its DOM on every snapshot. Each React part lives
 // in a container kept here by key: the shell re-inserts the same element, so
-// the root (and terminal scroll, open dialogs, fetched pages) survives.
+// the root (and component state, fetched pages) survives. Dialogs render into
+// <body> through portals because re-insertion would drop a modal's top layer.
 // begin()/end() bracket one shell render; roots not used in it are unmounted.
 // `keep` slots live in static markup (the request dialog) outside that render
 // and stay mounted.

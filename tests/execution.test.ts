@@ -188,6 +188,67 @@ test("E03 web resume preserves run and JSON identity; unresolved questions block
     await f.close();
   }
 });
+test("E14 web answer on a paused run, then resume, queues it for execution", async () => {
+  const f = await setup();
+  try {
+    const p = f.b.store.state.projects.A,
+      r = current(p);
+    r.status = "paused";
+    r.resume_required = true;
+    r.reason = "broker_restarted";
+    r.questions.push({
+      request_id: "q-preview",
+      run_id: r.run_id,
+      agent_id: r.agents[0].agent_id,
+      task_id: "plan",
+      kind: "execution_choice",
+      question: "미리보기를 다시 시도할까요?",
+      response_schema: {
+        type: "object",
+        properties: {
+          choice: { type: "string", enum: ["retry", "complete"] },
+          note: { type: "string" },
+        },
+        required: ["choice"],
+      },
+      status: "open",
+    });
+    await f.b.save(p);
+    assert.equal((await f.readiness()).ready, false);
+    const answer = await fetch(f.url + "/api/projects/answer", {
+      method: "POST",
+      headers: {
+        Origin: f.url,
+        "Content-Type": "application/json",
+        "X-Homepage-Token": f.csrf,
+      },
+      body: JSON.stringify({
+        project_id: "A",
+        run_id: r.run_id,
+        request_id: "q-preview",
+        response: { choice: "retry" },
+        command_id: randomUUID(),
+      }),
+    });
+    assert.equal(answer.status, 200);
+    assert.equal((await answer.json()).status, "answered");
+    // Without a slot the answer moves the run to queued; resume stays required.
+    let run = current(f.b.store.state.projects.A);
+    assert.equal(run.status, "queued");
+    assert.equal(run.resume_required, true);
+    const check = await f.readiness();
+    assert.equal(check.action, "resume");
+    assert.equal(check.ready, true);
+    assert.equal((await f.send(f.input("resume"))).status, 200);
+    run = current(f.b.store.state.projects.A);
+    assert.equal(run.status, "queued");
+    assert.equal(run.execution_requested, true);
+    assert.equal(run.resume_required, false);
+    assert.equal(run.reason, undefined);
+  } finally {
+    await f.close();
+  }
+});
 test("E04 execution rejects missing token, wrong origin, arbitrary fields and stale run IDs", async () => {
   const f = await setup();
   try {

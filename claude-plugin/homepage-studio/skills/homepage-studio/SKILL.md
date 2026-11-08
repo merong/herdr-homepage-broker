@@ -7,7 +7,9 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 
 ## 일하는 방식
 
-- 의도를 이해하고, 이미지를 만들고, 화면을 짓고, 화면을 보고 고치는 일을 PM 한 명이 끝까지 한다. 디자인, 카피, 구현은 다른 agent에 넘기지 않는다. 이미지 생성 호출을 병렬로 돌릴 때만 subagent를 쓸 수 있다. 이때 프롬프트와 저장 경로는 PM이 정해서 넘긴다.
+- 의도를 이해하고, 이미지를 만들고, 화면을 짓고, 화면을 보고 고치는 일을 PM 한 명이 끝까지 한다. 디자인, 카피, 구현은 다른 agent에 넘기지 않는다. subagent는 두 경우에만 쓴다.
+  - 이미지 생성 호출을 병렬로 돌릴 때. 프롬프트와 저장 경로는 PM이 정해서 넘긴다.
+  - build-out에서 SEO와 보안 점검을 맡길 때. `homepage-studio:homepage-seo`와 `homepage-studio:homepage-security`를 각 1회 부른다.
 - 문서는 최소로 쓰고 화면은 최대한 자주 본다. 판단은 문서가 아니라 스크린샷을 보고 한다.
 - 시각 판단에는 세 스킬을 쓴다. 각 스킬은 아래 단계를 시작할 때 Skill 도구로 로드한다. 로드하지 않은 스킬의 기법은 verdict에 적지 않는다.
   - `homepage-studio:design-taste`(direction 시작에 로드): direction에서 디자인 판독 한 줄과 세 다이얼을 정하고, look 회차에서 AI tells와 사전 점검으로 화면을 판정한다.
@@ -23,7 +25,7 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 - references는 필요할 때 연다.
   - `references/motion.md`: 모션
   - `references/images.md`: 이미지 생성·변환·기록
-  - `references/korean.md`: 카피·서체·SEO
+  - `references/korean.md`: 카피·서체
 - 전체 작업 시간은 30~45분, direction은 5분 안쪽을 목표로 한다.
 
 ## 세 질문
@@ -101,21 +103,25 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 
 1. 나머지 이미지를 만든다. `direction.md` 목록에서 배치가 확정된 것만 만든다.
 2. 나머지 섹션, 인터랙션, 모션을 만든다. 입력이 요구한 기능(폼, 계산기 등)은 실제로 동작해야 한다.
-3. look을 돌린다(`reports/look/3`부터, 최대 3회).
+3. 섹션이 다 지어지면 Agent 도구로 `homepage-studio:homepage-seo`와 `homepage-studio:homepage-security`를 한 메시지에서 함께 부른다(각 1회).
+   - 위임 메시지에는 PRD·design 경로, `app/` 경로, run의 `reports/` 경로, 미리보기 주소를 넣는다.
+   - 둘이 도는 동안 PM은 아래 look을 계속한다. `<head>`, `robots.txt`, 파비콘은 SEO agent가 끝날 때까지 건드리지 않는다.
+   - 보안 agent가 돌려준 높음·중간 항목은 final 전에 고친다. SEO agent가 돌려준 본문 문제는 look 회차에서 함께 고치고, 다시 빌드가 필요하다고 하면 빌드한다.
+4. look을 돌린다(`reports/look/3`부터, 최대 3회).
    - 전체 페이지는 `parts/`에 화면 두 개 높이씩 잘린 조각을 위에서 아래로 본다(`desktop-full.png`, `mobile-full.png`는 너무 길어 축소되어 보인다).
    - 세 질문, 섹션마다 할 일, 390px에서 읽히는지, `issues.json`을 확인하고 고친다.
    - 한 회차는 `--reduced-motion`으로 돌린다.
    - 한 회차는 design-taste 14절 사전 점검으로 보고, high-end-visual-design에서 고른 기법도 같은 회차에서 확인한다. 별도 문서나 회차는 더하지 않는다.
    - 회차 중 한 번은 세 가지를 짚어 본다: 중요 이미지의 원본과 실제 배치(`images.md` 확인 목록으로), 가장 긴 반복 구간의 연속 화면, 숫자가 바뀌는 주 입력을 빠르게 바꿨다 되돌렸을 때의 변화. 본 것은 그 회차 `verdict.md`에 적는다.
-4. 마지막에 `reports/look/final`로 1회 찍는다. 이것은 납품 증거이며, 찍은 뒤에는 고치지 않는다.
-5. `reports/notes.md`에 다음을 적는다.
+5. 두 agent가 모두 끝나고 그 결과를 반영한 뒤, 마지막에 `reports/look/final`로 1회 찍는다. 이것은 납품 증거이며, 찍은 뒤에는 고치지 않는다.
+6. `reports/notes.md`에 다음을 적는다.
    - 만든 섹션
    - 이미지: 파일, 용도, job ID
    - 쓴 모션
    - 서체와 라이선스
    - final 판정: 세 질문의 답
+   - SEO·보안: 고친 것과 남긴 것(`reports/seo.md`, `reports/security.md` 요약)
    - 남은 한계, 확인하지 못한 것
-6. 메타와 SEO 기본을 넣는다(`korean.md` 참고).
 
 ## 화면에서 확인할 것
 
@@ -133,4 +139,4 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 - 배포, 호스팅, publish, 소스 압축
 - 다른 스킬이나 서버 설치
 - 웹에서 이미지를 내려받아 쓰기(입력이 준 자산만 쓴다)
-- 별도 QA agent
+- SEO·보안 agent 외의 별도 QA·리뷰 agent

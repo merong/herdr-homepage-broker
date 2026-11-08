@@ -88,6 +88,7 @@ export function webSnapshot(s: Snapshot) {
         kind: q.kind,
         question: q.question,
         status: q.status,
+        response_schema: q.response_schema,
       })),
       unknown_operations: p.operations
         .filter((o) => o.status === "unknown")
@@ -123,6 +124,48 @@ const conceptStatus: Record<string, number> = {
   concept_timeout: 504,
   concept_failed: 502,
   concept_output_invalid: 502,
+};
+
+const answerErrors: Record<string, [number, string]> = {
+  invalid_request: [400, "답변 요청 형식이 올바르지 않습니다."],
+  invalid_project: [400, "프로젝트 ID 형식이 올바르지 않습니다."],
+  invalid_command: [400, "답변 요청 형식이 올바르지 않습니다."],
+  input_too_large: [413, "답이 너무 깁니다. 64KB 이하로 줄여 주세요."],
+  unknown_project: [404, "프로젝트를 찾을 수 없습니다."],
+  invalid_answer: [
+    422,
+    "답이 질문의 형식에 맞지 않습니다. 필수 항목과 고른 값을 확인하세요.",
+  ],
+  terminal_action_required: [
+    422,
+    "PM pane에서 인증·권한 요청을 먼저 처리한 뒤 확인란을 체크하세요.",
+  ],
+  stale_question: [
+    409,
+    "이미 답했거나 더 이상 열려 있지 않은 질문입니다. 최신 상태를 확인하세요.",
+  ],
+  stale_run: [
+    409,
+    "프로젝트의 run이 바뀌었습니다. 최신 상태에서 다시 확인하세요.",
+  ],
+  run_closed: [409, "이미 끝난 작업이라 답을 받을 수 없습니다."],
+  command_conflict: [
+    409,
+    "같은 요청 ID로 다른 답이 이미 접수됐습니다. 최신 상태를 확인한 뒤 다시 보내세요.",
+  ],
+  storage_unknown: [
+    503,
+    "브로커 상태 저장에 문제가 있어 답을 받을 수 없습니다. 브로커를 점검하세요.",
+  ],
+  receipt_unknown: [
+    502,
+    "접수 여부를 확인하지 못했습니다. 같은 답을 다시 보내면 중복 없이 결과를 확인합니다.",
+  ],
+  ECONNREFUSED: [
+    503,
+    "브로커에 연결하지 못했습니다. 브로커 실행 상태를 확인하세요.",
+  ],
+  ENOENT: [503, "브로커에 연결하지 못했습니다. 브로커 실행 상태를 확인하세요."],
 };
 
 export function previewUrl(status: string, raw?: string): string | null {
@@ -242,8 +285,7 @@ export class Dashboard {
     const assets = new Map<string, { body: Buffer; type: string }>();
     const js = "text/javascript; charset=utf-8",
       css = "text/css; charset=utf-8",
-      html = "text/html; charset=utf-8",
-      webp = "image/webp";
+      html = "text/html; charset=utf-8";
     for (const [route, name, type] of [
       // `/` is the landing page; the dashboard moved to `/dashboard` and the
       // landing forwards old `/#/…` links there (legacy.js).
@@ -251,18 +293,6 @@ export class Dashboard {
       ["/dashboard", "dashboard.html", html],
       ["/legacy.js", "legacy.js", js],
       ["/landing.css", "landing.css", css],
-      ["/landing/agent-concept.webp", "landing/agent-concept.webp", webp],
-      ["/landing/agent-broker.webp", "landing/agent-broker.webp", webp],
-      ["/landing/agent-pm.webp", "landing/agent-pm.webp", webp],
-      ["/landing/agent-image.webp", "landing/agent-image.webp", webp],
-      ["/landing/step-direction.webp", "landing/step-direction.webp", webp],
-      [
-        "/landing/step-first-screen.webp",
-        "landing/step-first-screen.webp",
-        webp,
-      ],
-      ["/landing/step-build-out.webp", "landing/step-build-out.webp", webp],
-      ["/landing/team.webp", "landing/team.webp", webp],
       ["/theme.js", "theme.js", js],
       ["/icons.js", "icons.js", js],
       ["/app.js", "app.js", js],
@@ -336,6 +366,14 @@ export class Dashboard {
     );
     if (concept && this.concepts) {
       await this.conceptRoute(req, res, concept, json);
+      return;
+    }
+    if (
+      req.method === "POST" &&
+      this.config &&
+      route === "/api/projects/answer"
+    ) {
+      await this.answerRoute(req, json);
       return;
     }
     if (
@@ -629,6 +667,86 @@ export class Dashboard {
       req.headers["x-homepage-token"] === this.csrf &&
       req.headers["content-type"]?.split(";")[0] === "application/json"
     );
+  }
+
+  // 질문 답변: the answer goes on stdin to the fixed `answer --file -`
+  // subcommand, so the broker engine checks it against response_schema exactly
+  // as a CLI answer. Only the receipt and a Korean message come back.
+  private async answerRoute(
+    req: http.IncomingMessage,
+    json: (code: number, body: unknown) => void,
+  ) {
+    if (!this.actionAllowed(req)) {
+      json(403, { error: "action_token_required" });
+      return;
+    }
+    try {
+      let input;
+      try {
+        input = await readJson(req, 64 * 1024);
+      } catch (e: any) {
+        if (e.code === "input_too_large")
+          fail("input_too_large", "Answer exceeds 64 KiB");
+        fail("invalid_request", "Invalid answer request");
+      }
+      const fields = [
+        "project_id",
+        "run_id",
+        "request_id",
+        "response",
+        "command_id",
+        "terminal_resolved",
+      ];
+      if (
+        !input ||
+        typeof input !== "object" ||
+        Array.isArray(input) ||
+        Object.keys(input).some((k) => !fields.includes(k)) ||
+        typeof input.project_id !== "string" ||
+        typeof input.run_id !== "string" ||
+        !input.run_id ||
+        input.run_id.length > 128 ||
+        typeof input.request_id !== "string" ||
+        !input.request_id ||
+        input.request_id.length > 128 ||
+        !("response" in input) ||
+        typeof input.command_id !== "string" ||
+        !/^[a-zA-Z0-9_-]{8,128}$/.test(input.command_id) ||
+        !["undefined", "boolean"].includes(typeof input.terminal_resolved)
+      )
+        fail("invalid_request", "Invalid answer request");
+      projectDirectory(this.config!, input.project_id);
+      const result = await projectCli(this.config!, "answer", {
+        schema_version: 1,
+        command_id: input.command_id,
+        type: "answer",
+        project_id: input.project_id,
+        run_id: input.run_id,
+        payload: {
+          request_id: input.request_id,
+          response: input.response,
+          ...(input.terminal_resolved === undefined
+            ? {}
+            : { terminal_resolved: input.terminal_resolved }),
+        },
+      });
+      json(200, {
+        request_id: result.request_id,
+        status: result.status,
+        revision: result.revision ?? null,
+        transport: "broker-cli",
+        session: "homepage",
+      });
+    } catch (e: any) {
+      // Broker messages are English and may echo schema details; the browser
+      // gets a fixed Korean message per code instead.
+      const code = e instanceof Fault ? e.code : "answer_failed";
+      const [status, message] = answerErrors[code] ?? [
+        409,
+        "답을 보내지 못했습니다. 상태를 새로 고친 뒤 다시 확인하세요.",
+      ];
+      json(status, { error: code, message });
+    }
   }
 
   // Concept chat (대화로 만들기): create, send one message, write the

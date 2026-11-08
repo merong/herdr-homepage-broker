@@ -19,7 +19,7 @@ const native = ["direction", "first-screen", "build-out"];
 const activeTask = new Set(["running", "retrying", "waiting_input"]);
 
 // When each task started and finished, from the run's event log.
-function times(events: BrokerEvent[], taskId: string) {
+export function times(events: BrokerEvent[], taskId: string) {
   let start: number | undefined, end: number | undefined;
   for (const e of [...events].reverse()) {
     if (e.kind !== "task" || e.task_id !== taskId) continue;

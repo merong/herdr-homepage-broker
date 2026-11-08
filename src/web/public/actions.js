@@ -455,7 +455,7 @@
     );
     section(
       "3. 상태와 사용자 입력",
-      "진행 상태는 broker-checkpoint.json을 기반으로 실시간 수신합니다. 연결 지연 시 2초 간격 조회로 전환합니다. 현재 진행에는 Herdr 실행 상태와 담당 작업, 최근 작업 보고가 표시되며 실제 실행 중인 태스크에만 로딩 효과가 적용됩니다. 프로젝트의 JSON 상태 확인은 meta/task/agents 파일의 revision·run 일치를 검사합니다. queued=접수 대기, running=제작 중, waiting_input=입력 필요, paused=명시적 재개 필요, review_pending=사용자 검토 대기입니다. 에이전트 유휴는 제작 완료와 다릅니다. 질문 답변은 answer --file, 문서 갱신은 apply-inputs로 전달합니다.",
+      "진행 상태는 broker-checkpoint.json을 기반으로 실시간 수신합니다. 연결 지연 시 2초 간격 조회로 전환합니다. 현재 진행에는 Herdr 실행 상태와 담당 작업, 최근 작업 보고가 표시되며 실제 실행 중인 태스크에만 로딩 효과가 적용됩니다. 프로젝트의 JSON 상태 확인은 meta/task/agents 파일의 revision·run 일치를 검사합니다. queued=접수 대기, running=제작 중, waiting_input=입력 필요, paused=명시적 재개 필요, review_pending=사용자 검토 대기입니다. 에이전트 유휴는 제작 완료와 다릅니다. 질문 답변은 프로젝트 상세의 답변 폼에서 보내며, 브로커가 CLI answer와 같은 형식 검사를 합니다. 일시정지된 작업은 질문에 먼저 답한 뒤 작업 재개를 누릅니다. 문서 갱신(apply-inputs)·취소·피드백은 브로커 CLI로 전달합니다.",
     );
     section(
       "4. 상태 체크와 실행 전제",

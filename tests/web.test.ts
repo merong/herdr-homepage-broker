@@ -6,6 +6,7 @@ import http from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import vm from "node:vm";
+import { randomUUID } from "node:crypto";
 import { fixture, FakeHerdr } from "./helpers.js";
 import { Broker } from "../src/broker/broker.js";
 import { brokerSocket, config } from "../src/config.js";
@@ -107,7 +108,7 @@ test("W01 HTTP assets, empty queue, IPC updates and sanitized status without wri
       task_id: "layout",
       kind: "execution_choice",
       question: "로고를 확인해주세요",
-      response_schema: { secret: "PRIVATE_SCHEMA" },
+      response_schema: { type: "string", maxLength: 200 },
       response: "PRIVATE_ANSWER",
       status: "open",
     });
@@ -132,6 +133,11 @@ test("W01 HTTP assets, empty queue, IPC updates and sanitized status without wri
       data = JSON.parse(body);
     assert.equal(data.session, "homepage");
     assert.equal(data.projects[0].input_required, true);
+    // The answer form needs the schema; the answer itself stays private.
+    assert.deepEqual(data.projects[0].input_requests[0].response_schema, {
+      type: "string",
+      maxLength: 200,
+    });
     assert.equal(data.projects[0].preview.url, "http://127.0.0.1:4300/");
     assert.equal(data.projects[0].tasks[0].title, r.tasks[0].title);
     assert.deepEqual(data.projects[0].unknown_operations, [
@@ -822,7 +828,7 @@ test("W16 ANSI parser maps SGR to terminal tokens and drops other escapes", () =
   assert.deepEqual(parseAnsi(""), [[]]);
 });
 
-test("W17 landing at /, dashboard at /dashboard, landing images and legacy hash forwarding", async () => {
+test("W17 landing at /, dashboard at /dashboard, drawn characters and legacy hash forwarding", async () => {
   const f = await setup();
   try {
     const landing = await fetch(f.url + "/");
@@ -841,32 +847,14 @@ test("W17 landing at /, dashboard at /dashboard, landing images and legacy hash 
     const dashboard = await (await fetch(f.url + "/dashboard")).text();
     assert.ok(dashboard.includes("/app.js"));
     assert.ok(dashboard.includes('class="toolbar-brand" href="/"'));
-    assert.ok(
-      (await (await fetch(f.url + "/ui/components.js")).text()).includes(
-        "lp-hero",
-      ),
-    );
-    let total = 0;
-    for (const name of [
-      "agent-concept",
-      "agent-broker",
-      "agent-pm",
-      "agent-image",
-      "step-direction",
-      "step-first-screen",
-      "step-build-out",
-      "team",
-    ]) {
-      const res = await fetch(f.url + `/landing/${name}.webp`);
-      assert.equal(res.status, 200, name);
-      assert.equal(res.headers.get("content-type"), "image/webp");
-      const body = Buffer.from(await res.arrayBuffer());
-      assert.equal(body.subarray(0, 4).toString(), "RIFF");
-      assert.equal(body.subarray(8, 12).toString(), "WEBP");
-      assert.ok(body.length <= 400 * 1024, `${name} ≤ 400KB`);
-      total += body.length;
-    }
-    assert.ok(total <= 1.5 * 1024 * 1024, "landing images ≤ 1.5MB");
+    // The characters are drawn in the bundle (Cast.tsx); the landing serves
+    // no image files of its own.
+    const bundle = await (await fetch(f.url + "/ui/components.js")).text();
+    for (const marker of ["lp-hero", "cast-float", "lp-pipe"])
+      assert.ok(bundle.includes(marker), marker);
+    // The team shows the two reviewer subagents the PM really calls.
+    for (const member of ["SEO 에이전트", "보안 에이전트"])
+      assert.ok(bundle.includes(member), member);
     for (const route of [
       "/dashboard/",
       "/dashboard?x=1",
@@ -876,6 +864,8 @@ test("W17 landing at /, dashboard at /dashboard, landing images and legacy hash 
       "/landing/",
       "/landing/other.webp",
       "/landing/hero.webp",
+      "/landing/agent-pm.webp",
+      "/landing/team.webp",
       "/landing/../config.json",
     ])
       assert.equal((await httpRequest(f.url + route)).status, 404, route);
@@ -1091,4 +1081,157 @@ test("W19 showcase display name comes from the PRD heading only", () => {
     [`# ${"가".repeat(80)}`, "가".repeat(48)],
   ])
     assert.equal(displayName(prd, "fallback"), name, prd);
+});
+
+test("W20 answer route: action token, Korean schema errors, receipt dedupe, stale question and schema-only snapshot", async () => {
+  const f = await setup();
+  try {
+    await f.b.handle(f.submit());
+    const p = f.b.store.state.projects.A,
+      r = current(p);
+    const choice = {
+      type: "object",
+      properties: {
+        choice: {
+          type: "string",
+          enum: ["retry", "complete_without_preview"],
+          description:
+            "retry: 다시 시도 / complete_without_preview: 미리보기 없이 완료",
+        },
+        note: { type: "string" },
+      },
+      required: ["choice"],
+    };
+    const question = (
+      request_id: string,
+      kind: "execution_choice" | "terminal_action",
+      schema: any,
+    ) => ({
+      request_id,
+      run_id: r.run_id,
+      agent_id: r.agents[0].agent_id,
+      task_id: "plan",
+      kind,
+      question: `${request_id} 질문`,
+      response_schema: schema,
+      status: "open" as const,
+    });
+    r.questions.push(
+      question("q1", "execution_choice", choice),
+      question("q2", "terminal_action", { type: "string" }),
+    );
+    await f.b.save(p);
+    const csrf = (await (await fetch(f.url + "/api/bootstrap")).json()).csrf;
+    const post = (body: any, headers: Record<string, string> = {}) =>
+      fetch(f.url + "/api/projects/answer", {
+        method: "POST",
+        headers: {
+          Origin: f.url,
+          "Content-Type": "application/json",
+          "X-Homepage-Token": csrf,
+          ...headers,
+        },
+        body: typeof body === "string" ? body : JSON.stringify(body),
+      });
+    const ok = {
+      project_id: "A",
+      run_id: r.run_id,
+      request_id: "q1",
+      response: { choice: "retry", note: "다른 미리보기를 멈췄습니다" },
+      command_id: randomUUID(),
+    };
+    const before = JSON.stringify(f.b.store.state);
+    assert.equal((await post(ok, { "X-Homepage-Token": "wrong" })).status, 403);
+    assert.equal(
+      (await post(ok, { "Content-Type": "text/plain" })).status,
+      403,
+    );
+    assert.equal(
+      (await post(ok, { Origin: "http://evil.example" })).status,
+      403,
+    );
+    const noToken = await fetch(f.url + "/api/projects/answer", {
+      method: "POST",
+      headers: { Origin: f.url, "Content-Type": "application/json" },
+      body: JSON.stringify(ok),
+    });
+    assert.equal(noToken.status, 403);
+    for (const value of [
+      { ...ok, argv: ["sh"] },
+      { ...ok, command_id: "short" },
+      { ...ok, terminal_resolved: "yes" },
+      {
+        project_id: "A",
+        run_id: r.run_id,
+        request_id: "q1",
+        command_id: randomUUID(),
+      },
+    ]) {
+      const res = await post(value);
+      assert.equal(res.status, 400);
+      assert.equal((await res.json()).error, "invalid_request");
+    }
+    const large = await post({
+      ...ok,
+      response: { choice: "retry", note: "가".repeat(30000) },
+    });
+    assert.equal(large.status, 413);
+    const bad = await post({ ...ok, response: { choice: "maybe" } });
+    assert.equal(bad.status, 422);
+    const badBody = await bad.json();
+    assert.equal(badBody.error, "invalid_answer");
+    assert.match(badBody.message, /질문의 형식에 맞지 않습니다/);
+    assert.doesNotMatch(JSON.stringify(badBody), /must|cli\.js|\/private\//);
+    const terminal = {
+      ...ok,
+      request_id: "q2",
+      response: "pane에서 로그인했습니다",
+      command_id: randomUUID(),
+    };
+    const unresolved = await post(terminal);
+    assert.equal(unresolved.status, 422);
+    assert.equal((await unresolved.json()).error, "terminal_action_required");
+    assert.equal(JSON.stringify(f.b.store.state), before);
+
+    const first = await post(ok);
+    assert.equal(first.status, 200);
+    const receipt = await first.json();
+    assert.equal(receipt.request_id, "q1");
+    assert.equal(receipt.status, "answered");
+    const again = await post(ok);
+    assert.equal(again.status, 200);
+    const replay = await again.json();
+    assert.deepEqual(
+      [replay.request_id, replay.status],
+      [receipt.request_id, receipt.status],
+    );
+    const conflict = await post({
+      ...ok,
+      response: { choice: "complete_without_preview" },
+    });
+    assert.equal(conflict.status, 409);
+    assert.equal((await conflict.json()).error, "command_conflict");
+    const stale = await post({ ...ok, command_id: randomUUID() });
+    assert.equal(stale.status, 409);
+    const staleBody = await stale.json();
+    assert.equal(staleBody.error, "stale_question");
+    assert.match(staleBody.message, /이미 답했거나/);
+    const resolved = await post({ ...terminal, terminal_resolved: true });
+    assert.equal(resolved.status, 200);
+    const run = current(f.b.store.state.projects.A);
+    assert.deepEqual(
+      run.questions.map((q) => q.status),
+      ["answered", "answered"],
+    );
+    assert.deepEqual(run.questions[0].response, ok.response);
+
+    const status = await (await fetch(f.url + "/api/status")).json();
+    const shown = status.projects[0].input_requests;
+    assert.deepEqual(shown[0].response_schema, choice);
+    assert.deepEqual(shown[1].response_schema, { type: "string" });
+    assert.ok(shown.every((q: any) => !("response" in q)));
+    assert.ok(!JSON.stringify(status).includes(r.agents[0].token));
+  } finally {
+    await f.close();
+  }
 });
