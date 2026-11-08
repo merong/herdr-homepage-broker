@@ -5,6 +5,7 @@ import { readInputs } from "../storage/store.js";
 import { Herdr } from "../herdr/transport.js";
 import { injectedSkills } from "../config.js";
 import { studioPlugin, studioTools } from "../agents/studio.js";
+import { extensionStatus } from "../agents/extensions.js";
 export async function executionReadiness(
   config: Config,
   p: Project,
@@ -72,6 +73,9 @@ export async function executionReadiness(
     const tools = await studioTools();
     if (tools.warning)
       warnings.push({ code: "studio_tools_missing", detail: tools.warning });
+    const ext = await extensionStatus();
+    if (ext.warning)
+      warnings.push({ code: "extensions_missing", detail: ext.warning });
   }
   for (const file of injectedSkills(config, mode)) {
     try {

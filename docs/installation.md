@@ -20,7 +20,7 @@ Herdr가 없다면 [공식 설치 안내](https://herdr.dev/)를 따릅니다. `
 herdr --session homepage plugin install merong/herdr-homepage-broker --ref v0.12.0 --yes
 ```
 
-설치가 의존성 설치와 TypeScript·정적 UI 빌드를 실행합니다. `dist`와 `node_modules`는 Git에 포함하지 않습니다. `--ref`를 고정하면 재현 가능한 버전을 설치할 수 있습니다.
+설치가 의존성 설치와 TypeScript·정적 UI 빌드, 품질 확장 스킬 내려받기(`extensions sync --best-effort`)를 실행합니다. `dist`와 `node_modules`는 Git에 포함하지 않습니다. `--ref`를 고정하면 재현 가능한 버전을 설치할 수 있습니다.
 
 workspace가 없다면 생성한 뒤 그 안에서 플러그인을 실행합니다.
 
@@ -91,6 +91,17 @@ herdr --session homepage plugin log list --plugin herdr-homepage-broker
 - MCP 연결·인증 문제가 실제 작업에서 발생하면 해당 오류를 사용자 입력 요청으로 보고합니다. 설치된 연결을 점검하려면 `claude --setting-sources '' mcp list` 또는 브로커 `doctor`를 사용합니다. 사전 체크에 별도 MCP 설정을 요구하지 않습니다.
 - 손상·불일치한 JSON은 직접 덮어쓰지 말고 CLI 상태와 checkpoint를 대조합니다.
 - `dist/src/cli.js`의 CLI를 직접 쓸 때는 설치 checkout에서 실행합니다. 설치 위치는 Herdr 설치 결과나 plugin 목록에서 확인합니다.
+
+## 품질 확장 스킬 (다음 릴리스)
+
+플러그인 설치의 마지막 빌드 단계가 impeccable과 taste-skill을 잠금 파일(`claude-plugin/extensions.lock.json`)에 고정된 커밋으로 GitHub에서 받아 `~/.local/share/herdr-homepage/extensions/`에 둡니다. 받은 파일의 해시가 잠금 파일과 다르면 설치하지 않습니다. 네트워크 문제로 이 단계가 실패해도 플러그인 설치는 계속되므로, 설치 checkout에서 직접 다시 실행합니다.
+
+```sh
+node dist/src/cli.js extensions sync     # 실패하면 오류로 끝남
+node dist/src/cli.js extensions status   # installed·missing 확인
+```
+
+`doctor`의 `extensions` 항목과 실행 준비의 `extensions_missing` 경고로도 확인할 수 있습니다. 확장이 없어도 제작은 막지 않고, PM이 그 스킬을 쓰지 못할 뿐입니다. store 위치는 `HOMEPAGE_EXTENSIONS_DIR`(절대 경로)로 바꿀 수 있으며 브로커와 설치 단계가 같은 값을 써야 합니다. 스킬은 브로커가 PM을 띄울 때 프로젝트 폴더의 `.claude/skills`에 링크로만 연결하며, 사용자 `~/.claude`에는 설치하지 않습니다.
 
 ## homepage-studio 진단 (0.9.0)
 

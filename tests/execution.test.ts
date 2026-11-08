@@ -346,7 +346,7 @@ test("E07 installed Claude MCP needs no broker mapping and only the requested pr
       assert.equal(args.includes("--mcp-config"), false);
       assert.equal(args.includes("--disable-slash-commands"), false);
       assert.equal(args.includes("--disallowedTools"), false);
-      assert.ok(args.includes("--setting-sources="));
+      assert.ok(args.includes("--setting-sources=project"));
       assert.ok(args.every((arg) => arg.length > 0 && !/[\n\r\x00]/.test(arg)));
       assert.equal(args.includes("--append-system-prompt-file"), false);
       const p = f.b.store.state.projects.A;
@@ -572,7 +572,7 @@ test("E11 native PM uses file bootstrap, owns all logical tasks and survives res
       "claude-opus-5-5",
       "--effort",
       "high",
-      "--setting-sources=",
+      "--setting-sources=project",
       "--plugin-dir",
       studio.dir,
     ]);

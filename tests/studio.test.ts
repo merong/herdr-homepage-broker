@@ -353,13 +353,14 @@ test("S01 homepage-studio plugin ships the lean skill, vendored design skills, t
   assert.match(look, /behavior: "instant"/);
 });
 
-test("S02 native PM launch adds --plugin-dir; pm-led launches stay unchanged", async () => {
+test("S02 native PM launch adds --plugin-dir and project settings; pm-led launches stay unchanged", async () => {
   assert.deepEqual(claudeArgs(undefined, true, "/plugin").slice(-3), [
-    "--setting-sources=",
+    "--setting-sources=project",
     "--plugin-dir",
     "/plugin",
   ]);
   assert.equal(claudeArgs("/system.md", true).includes("--plugin-dir"), false);
+  assert.ok(claudeArgs("/system.md", true).includes("--setting-sources="));
   const native = await launch();
   try {
     const [start] = native.starts();
@@ -376,6 +377,21 @@ test("S02 native PM launch adds --plugin-dir; pm-led launches stay unchanged", a
     assert.equal(runtime.orchestration.builder, "pm");
     assert.equal(runtime.orchestration.native_agents, undefined);
     assert.equal(runtime.orchestration.helper_limit, undefined);
+    assert.deepEqual(
+      JSON.parse(
+        await fs.readFile(
+          path.join(native.p.directory, ".claude/settings.json"),
+          "utf8",
+        ),
+      ),
+      { disableAllHooks: true },
+    );
+    const extensions = JSON.parse(
+      await native.read("skills-lock.json"),
+    ).extensions;
+    assert.equal(extensions.setting_sources, "project");
+    assert.equal(extensions.hooks, "disabled");
+    assert.deepEqual(extensions.skills, [], "the test store is empty");
   } finally {
     await native.close();
   }
@@ -504,7 +520,7 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
     assert.match(guide, /Do not hand design, copy or build work to subagents/);
     assert.match(
       guide,
-      /Subagents are allowed for two jobs only: running independent image generations in parallel \(you write every prompt and review every result yourself\)/,
+      /Subagents are allowed for two jobs only: running independent image generations in parallel \(you write every prompt; each image subagent checks its own batch against the images reference/,
     );
     assert.match(
       guide,
@@ -541,14 +557,18 @@ test("S04 PM instructions: one builder, three tasks, the look loop and the media
       /Start the preview in the first-screen task as soon as the first screen renders/,
     );
     assert.ok(guide.includes(`resolve under ${studio.dir}/skills/<skill>/`));
+    assert.match(guide, /Image count follows the inputs, not a budget/);
     assert.match(
       guide,
-      /Explicit image or video counts in the PRD or design win/,
+      /lists image scenes, generate every listed scene; if it states a count or a limit, follow it/,
     );
+    assert.match(guide, /Credits are never a reason to drop a listed scene/);
     assert.match(
       guide,
-      /placement and job on the page are decided, at most 12/,
+      /a run submits at most 30 images, retries included; if the plan already exceeds 30, ask one execution_choice question at direction before generating, otherwise before the 31st submission/,
     );
+    assert.doesNotMatch(guide, /at most 12/);
+    assert.match(guide, /each write their own media-receipts\.<batch>\.json/);
     assert.match(guide, /no video unless the PRD or design asks for one/);
     assert.ok(
       guide.includes(
@@ -920,7 +940,7 @@ test("S08 look.py tools are resolved like the PM pane's login shell and only war
       assert.equal(ready.checks.length, 2);
       assert.deepEqual(
         ready.warnings.map((w: any) => w.code),
-        ["studio_tools_missing"],
+        ["studio_tools_missing", "extensions_missing"],
       );
       assert.match(
         ready.warnings[0].detail,
@@ -1557,4 +1577,35 @@ test("S13 the look line and the legacy CLI sentence run in sh and zsh when paths
     studio.dir = before;
     await run?.close();
   }
+});
+
+test("S14 image count follows the input scene list under a 30-image safety ceiling, with batch subagents that check their own images", async () => {
+  const skill = path.join(repoPlugin, "skills/homepage-studio");
+  const lean = await fs.readFile(path.join(skill, "SKILL.md"), "utf8");
+  const images = await fs.readFile(
+    path.join(skill, "references/images.md"),
+    "utf8",
+  );
+  assert.match(lean, /`direction\.md` 목록의 이미지를 모두 만든다/);
+  assert.match(lean, /합계: N장 \(입력 목록 M장 \+ 추가 K장\)/);
+  assert.match(lean, /이미지 목록을 빼고 40줄 이내다/);
+  assert.doesNotMatch(lean, /배치가 확정된 것만 만든다/);
+  assert.match(images, /장수는 크레딧이 아니라 입력이 정한다/);
+  assert.match(images, /장면 목록에 있는 장면은 모두 만든다/);
+  assert.match(images, /덜 만드는 것은 생성이 실패했을 때뿐이다/);
+  assert.match(
+    images,
+    /안전 상한은 run당 제출 30장이다\(재생성, 실패, 결과 미확인 포함\)/,
+  );
+  assert.match(images, /묶음 4개 이하/);
+  assert.match(images, /한 파일을 여러 agent가 함께 쓰지 않는다/);
+  assert.doesNotMatch(images, /12장 이하/);
+  const receipts = JSON.parse(/```json\n([\s\S]*?)\n```/.exec(images)![1]);
+  assert.deepEqual(receipts.budget, {
+    images: 17,
+    listed: 15,
+    videos: 0,
+    source: "prd",
+    ceiling: 30,
+  });
 });

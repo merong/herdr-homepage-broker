@@ -12,6 +12,10 @@ platforms = ["macos"]
 command = ["npm", "run", "build"]
 platforms = ["macos"]
 
+[[build]]
+command = ["node", "dist/src/cli.js", "extensions", "sync", "--best-effort"]
+platforms = ["macos"]
+
 [[panes]]
 id = "board"
 title = "Homepage jobs"

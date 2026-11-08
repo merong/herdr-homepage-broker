@@ -5,6 +5,7 @@ import { Agent, Config, Project, Run, Task } from "../contracts/types.js";
 import { atomic, hash } from "../storage/store.js";
 import { brokerCli, nativePrompt, shellQuote, studioPlan } from "./native.js";
 import { studioPlugin, treeHash } from "./studio.js";
+import { projectExtensions } from "./extensions.js";
 import { brokerSocket, injectedSkills } from "../config.js";
 export async function rolePrompt(c: Config, p: Project, r: Run, a: Agent) {
   const mode = r.orchestration?.mode ?? "legacy";
@@ -18,6 +19,7 @@ export async function rolePrompt(c: Config, p: Project, r: Run, a: Agent) {
   if (mode === "claude-native") {
     const plugin = await studioPlugin();
     const tree = await treeHash(plugin.path);
+    const extensions = await projectExtensions(p.directory);
     await atomic(
       path.join(dir, "skills-lock.json"),
       JSON.stringify(
@@ -25,6 +27,7 @@ export async function rolePrompt(c: Config, p: Project, r: Run, a: Agent) {
           schema_version: 1,
           skills: lock,
           plugin: { ...plugin, tree_sha256: tree.sha256, files: tree.files },
+          extensions,
         },
         null,
         2,
@@ -194,7 +197,9 @@ export const claudeArgs = (
   ...(installedMcp
     ? []
     : ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}']),
-  "--setting-sources=",
+  // Native PMs read only the broker-prepared <project>/.claude (extension
+  // skills, hooks off); legacy launches load no setting sources.
+  pluginDir ? "--setting-sources=project" : "--setting-sources=",
   ...(pluginDir ? ["--plugin-dir", pluginDir] : []),
   ...(systemFile ? ["--append-system-prompt-file", systemFile] : []),
 ];

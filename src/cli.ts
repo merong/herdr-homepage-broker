@@ -21,6 +21,7 @@ import { Herdr } from "./herdr/transport.js";
 import { detectMcp, Mcp } from "./media/mcp.js";
 import { board } from "./ui/board.js";
 import { studioDoctor } from "./agents/studio.js";
+import { extensionStatus, syncExtensions } from "./agents/extensions.js";
 const exec = promisify(execFile);
 export async function main(argv = process.argv.slice(2)) {
   const opt = (name: string) => {
@@ -146,8 +147,25 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (mode === "help" || mode === "--help") {
     console.log(
-      `herdr-webjobs — homepage session broker\n\nbroker start|ensure|stop|status|recover [--config file]\nproject init --file init.json | submit|state|readiness --project ID | sample\nsubmit|answer|apply-inputs|feedback|resume|execute|cancel|report --file command.json\nmedia request|status --file command.json\npreview start|stop --file command.json\nreconcile --file command.json\nstatus [--project id] [--socket path]\nweb open|status\nboard | doctor | plugin start|stop|board|status|web|web-status\n\nAll writes require schema_version:1, command_id, type, payload and explicit target IDs.\nSubmit additionally requires project_id, payload.directory and payload.inputs.prd/design {path,sha256}.\nNo shell interpolation, model fallback, automatic auth approval or non-homepage session fallback.`,
+      `herdr-webjobs — homepage session broker\n\nbroker start|ensure|stop|status|recover [--config file]\nproject init --file init.json | submit|state|readiness --project ID | sample\nsubmit|answer|apply-inputs|feedback|resume|execute|cancel|report --file command.json\nmedia request|status --file command.json\npreview start|stop --file command.json\nreconcile --file command.json\nstatus [--project id] [--socket path]\nweb open|status\nboard | doctor | plugin start|stop|board|status|web|web-status\nextensions sync [--best-effort] | status\n\nAll writes require schema_version:1, command_id, type, payload and explicit target IDs.\nSubmit additionally requires project_id, payload.directory and payload.inputs.prd/design {path,sha256}.\nNo shell interpolation, model fallback, automatic auth approval or non-homepage session fallback.`,
     );
+    return;
+  }
+  if (mode === "extensions" && argv[1] === "status") {
+    output(await extensionStatus());
+    return;
+  }
+  if (mode === "extensions" && argv[1] === "sync") {
+    // --best-effort keeps the Herdr plugin install going without network;
+    // readiness and doctor then report the missing extensions.
+    const result = await syncExtensions();
+    output(result);
+    const failed = result.results.filter((r) => r.status === "failed");
+    if (failed.length && !argv.includes("--best-effort"))
+      fail(
+        "extension_sync_failed",
+        failed.map((r) => `${r.name}: ${r.detail}`).join(" "),
+      );
     return;
   }
   if (mode === "doctor") {
@@ -191,6 +209,7 @@ export async function main(argv = process.argv.slice(2)) {
         ...(c.mcp ? { broker: mcp } : {}),
       },
       studio: await studioDoctor(),
+      extensions: await extensionStatus(),
       state_dir: stateDir(c),
       execution_enabled: c.allowExecution,
     });

@@ -6,6 +6,8 @@ import { hash } from "../src/storage/store.js";
 import { Herdr } from "../src/herdr/transport.js";
 // Studio tool discovery would otherwise run the developer's login shell.
 delete process.env.SHELL;
+// Extension checks would otherwise read the developer's installed store.
+process.env.HOMEPAGE_EXTENSIONS_DIR = `/private/tmp/hp-no-extensions-${process.pid}`;
 export async function fixture() {
   const root = await fs.mkdtemp("/private/tmp/hp-");
   const config: Config = {

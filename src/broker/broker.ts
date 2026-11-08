@@ -38,6 +38,7 @@ import {
 import { Herdr, HerdrRejected, Lines, Observer } from "../herdr/transport.js";
 import { rolePrompt, claudeArgs, assignment } from "../agents/prompts.js";
 import { studioPlugin } from "../agents/studio.js";
+import { projectExtensions } from "../agents/extensions.js";
 import { Mcp, field } from "../media/mcp.js";
 import {
   recheckPreview,
@@ -669,6 +670,8 @@ export class Broker {
       r.orchestration?.mode === "claude-native"
         ? await studioPlugin()
         : undefined;
+    // The project .claude the native PM will read is prepared before Herdr too.
+    if (plugin) await projectExtensions(p.directory);
     await this.herdr.doctor();
     await prepareRuntime(
       this.config,

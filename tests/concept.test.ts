@@ -5,7 +5,11 @@ import path from "node:path";
 import { fixture, FakeHerdr } from "./helpers.js";
 import { Dashboard } from "../src/web/server.js";
 import { conceptAgent } from "../src/concept/agent.js";
-import { GREETING } from "../src/concept/prompt.js";
+import {
+  CHAT_PROMPT,
+  COMPOSE_PROMPT,
+  GREETING,
+} from "../src/concept/prompt.js";
 
 const draft = (extra: object = {}) => ({
   project_id: "moru-coffee",
@@ -636,4 +640,21 @@ test("C07 documents go stale when the chat continues and avoid existing project 
   } finally {
     await f.close();
   }
+});
+
+test("C08 the chat asks how many items to show once and the PRD lists every image scene with a total, without a fixed cap", () => {
+  assert.match(CHAT_PROMPT, /6\. 보여 줄 목록의 수: [^\n]*한 번 묻습니다/);
+  assert.match(CHAT_PROMPT, /images에는 사진 방향과 예상 장수를 함께 씁니다/);
+  assert.match(
+    CHAT_PROMPT,
+    /1~3과 5를 알게 되고 6에 해당하는 업종이면 6도 물었거나/,
+  );
+  assert.match(COMPOSE_PROMPT, /아래 장면은 모두 만든다/);
+  assert.match(
+    COMPOSE_PROMPT,
+    /- <보여 줄 내용>: <장수> — <그 사진으로 방문자가 알게 되는 것>/,
+  );
+  assert.match(COMPOSE_PROMPT, /끝 줄은 "합계 N장"/);
+  assert.match(COMPOSE_PROMPT, /장수를 줄이려고 장면을 빼지 않습니다/);
+  assert.doesNotMatch(COMPOSE_PROMPT, /최대 8장|장면 예시 3~4개/);
 });

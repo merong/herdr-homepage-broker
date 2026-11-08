@@ -8,7 +8,7 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 ## 일하는 방식
 
 - 의도를 이해하고, 이미지를 만들고, 화면을 짓고, 화면을 보고 고치는 일을 PM 한 명이 끝까지 한다. 디자인, 카피, 구현은 다른 agent에 넘기지 않는다. subagent는 두 경우에만 쓴다.
-  - 이미지 생성 호출을 병렬로 돌릴 때. 프롬프트와 저장 경로는 PM이 정해서 넘긴다.
+  - 이미지 생성을 묶음으로 나눠 병렬로 돌릴 때. 프롬프트와 저장 경로는 PM이 정해서 넘기고, subagent는 자기 묶음을 1차 확인해 결과를 돌려준다(`images.md`의 '여러 장 만들기').
   - build-out에서 SEO와 보안 점검을 맡길 때. `homepage-studio:homepage-seo`와 `homepage-studio:homepage-security`를 각 1회 부른다.
 - 문서는 최소로 쓰고 화면은 최대한 자주 본다. 판단은 문서가 아니라 스크린샷을 보고 한다.
 - 시각 판단에는 세 스킬을 쓴다. 각 스킬은 아래 단계를 시작할 때 Skill 도구로 로드한다. 로드하지 않은 스킬의 기법은 verdict에 적지 않는다.
@@ -63,7 +63,7 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 
 ## 1. direction (pm)
 
-시작할 때 `homepage-studio:design-taste`를 로드한다. `reports/direction.md` 하나만 쓴다. 40줄 이내다.
+시작할 때 `homepage-studio:design-taste`를 로드한다. `reports/direction.md` 하나만 쓴다. 이미지 목록을 빼고 40줄 이내다.
 
 ```markdown
 # <회사> 방향
@@ -72,7 +72,8 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 ## 가져올 성격 — 레퍼런스·업종에서 2~3개, 무엇을 왜
 ## 섹션 — 섹션 이름: 이 섹션이 할 일 한 줄 (메시지에 필요한 것만)
 대표 장면: 위 섹션 중 이 회사의 차이를 가장 잘 보여 줄 장면 하나, 그 장면이 화면의 크기·순서·여백을 어떻게 정하는지 한 줄
-## 이미지 — 파일명: 놓일 곳, 보여 줄 정보, 비율
+## 이미지 — 파일명: 놓일 곳, 보여 줄 정보, 비율 (입력 목록 밖에서 더한 것은 끝에 "추가: 이유")
+합계: N장 (입력 목록 M장 + 추가 K장)
 ## 시각 방향 — 색, 글자, 모션 아이디어를 각각 한 줄
 판독: <design-taste 0.B 한 줄> / 다이얼 V·M·D
 ## 조정한 입력 — 분위기 제안을 바꿨다면 이유 한 줄
@@ -101,7 +102,7 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 
 ## 3. build-out (developer)
 
-1. 나머지 이미지를 만든다. `direction.md` 목록에서 배치가 확정된 것만 만든다.
+1. 나머지 이미지를 만든다. `direction.md` 목록의 이미지를 모두 만든다. 서로 독립적인 것은 묶음으로 나눠 이미지 subagent를 한 메시지에서 함께 부르고, 그동안 섹션을 짓는다(`images.md`의 '여러 장 만들기').
 2. 나머지 섹션, 인터랙션, 모션을 만든다. 입력이 요구한 기능(폼, 계산기 등)은 실제로 동작해야 한다.
 3. 섹션이 다 지어지면 Agent 도구로 `homepage-studio:homepage-seo`와 `homepage-studio:homepage-security`를 한 메시지에서 함께 부른다(각 1회).
    - 위임 메시지에는 PRD·design 경로, `app/` 경로, run의 `reports/` 경로, 미리보기 주소를 넣는다.
@@ -116,7 +117,7 @@ description: Herdr 홈페이지 브로커의 PM이 run을 시작할 때 가장 �
 5. 두 agent가 모두 끝나고 그 결과를 반영한 뒤, 마지막에 `reports/look/final`로 1회 찍는다. 이것은 납품 증거이며, 찍은 뒤에는 고치지 않는다.
 6. `reports/notes.md`에 다음을 적는다.
    - 만든 섹션
-   - 이미지: 파일, 용도, job ID
+   - 이미지: 파일, 용도, job ID. 입력 목록 대비 추가한 것과 이유, 실패해서 빠진 것
    - 쓴 모션
    - 서체와 라이선스
    - final 판정: 세 질문의 답
